@@ -18,7 +18,7 @@ class PCIRequirementsExtractor:
         self.requirements = []
         
         # Marqueurs pour identifier les sections en espagnol
-        self.test_indicators = ['• Evalúe', '• Observe', '• Entreviste', '• Examine', '• Revise']
+        self.test_indicators = ['• Evalúe', '• Observe', '• Entreviste', '• Examine', '• Revise', '• Verifique', '• Inspeccione']
         self.applicability_marker = "Notas de Aplicabilidad"
         self.guidance_marker = "Orientación"
 
@@ -136,6 +136,7 @@ class PCIRequirementsExtractor:
         text = re.sub(r'♦\s*Consulte.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Marque una respuesta.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Sección \d+ :', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Procedimientos de Prueba\s*$', '', text, flags=re.IGNORECASE | re.MULTILINE)
         
         # Clean response tables
         text = re.sub(r'En Su Lugar\s+En Su Lugar con CCW\s+No Aplicable\s+No Probado\s+No En Su Lugar', '', text, flags=re.IGNORECASE)
@@ -178,7 +179,7 @@ class PCIRequirementsExtractor:
         if any(line_clean.startswith(indicator) for indicator in self.test_indicators):
             return True
         # Check for common test patterns without bullet
-        test_verbs = ['Evalúe', 'Observe', 'Entreviste', 'Examine', 'Revise', 'Evaluar', 'Observar', 'Entrevistar', 'Examinar', 'Revisar']
+        test_verbs = ['Evalúe', 'Observe', 'Entreviste', 'Examine', 'Revise', 'Verifique', 'Inspeccione', 'Evaluar', 'Observar', 'Entrevistar', 'Examinar', 'Revisar', 'Verificar', 'Inspeccionar']
         # Check if line starts with bullet + verb pattern
         import re
         pattern = r'^[•\-\*]\s*(' + '|'.join(test_verbs) + r')\b'
@@ -496,6 +497,8 @@ class PCIRequirementsExtractor:
             r'^PCI Security Standards Council',
             r'^Self\s*-\s*Assessment\s+Questionnaire',
             r'^PCI DSS v[\d.]+',
+            r'^SAQ D para Comerciantes',
+            r'^Cuestionario de Autoevaluación',
             r'© 2006[−-]\d+.*PCI Security Standards Council.*LLC.*Todos los Derechos Reservados.*Página \d+',
         ]
         
@@ -656,7 +659,7 @@ class PCIRequirementsExtractor:
         print(f"Structure CSV: {len(csv_data)} exigences avec colonnes simplifiées")
 
 def main():
-    pdf_path = "PCI-DSS-v4-0-1-SAQ-D-Merchant-ES.pdf"
+    pdf_path = "PCI-DSS-v4-0-1-SAQ-D-Merchant-LA.pdf"
     print("EXTRACTEUR PCI DSS ESPAGNOL")
     print("=" * 60)
     
