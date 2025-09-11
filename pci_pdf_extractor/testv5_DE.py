@@ -18,8 +18,8 @@ class PCIRequirementsExtractor:
         self.requirements = []
         
         # Markierungen zur Identifizierung von Abschnitten auf Deutsch
-        self.test_indicators = ['• Dokumentation untersuchen', '• untersuchen', '• Untersuchen', '• befragen', '• Befragen', '• Personal befragen', '• prüfen', '• Prüfen', '• überprüfen', '• Überprüfen', '• bewerten', '• Bewerten', '• beobachten', '• Beobachten', '• Konfiguration', '• Konfigurationseinstellungen']
-        self.applicability_marker = "Anwendbarkeitshinweise"
+        self.test_indicators = ['• Untersuchen', '• Befragen', '• Prüfen', '• Überprüfen', '• Bewerten', '• Beobachten']
+        self.applicability_marker = "Hinweise zur Anwendbarkeit"
         self.guidance_marker = "Leitfaden"
 
     def find_start_page(self) -> int:
@@ -178,12 +178,14 @@ class PCIRequirementsExtractor:
         # Prüfe exakte Übereinstimmungen zuerst
         if any(line_clean.startswith(indicator) for indicator in self.test_indicators):
             return True
-        # Prüfe auf häufige Testmuster ohne Aufzählungszeichen
-        test_verbs = ['untersuchen', 'Untersuchen', 'befragen', 'Befragen', 'prüfen', 'Prüfen', 'überprüfen', 'Überprüfen', 'bewerten', 'Bewerten', 'beobachten', 'Beobachten', 'kontrollieren', 'Kontrollieren', 'inspizieren', 'Inspizieren']
-        # Prüfe ob Zeile mit Aufzählungszeichen + Verb-Pattern beginnt
-        import re
-        pattern = r'^[•\-\*]\s*(' + '|'.join(test_verbs) + r')\b'
-        return bool(re.match(pattern, line_clean, re.IGNORECASE))
+        # Prüfe auf häufige Testmuster - deutsche Verben können am Ende stehen
+        test_verbs = ['untersuchen', 'befragen', 'prüfen', 'überprüfen', 'bewerten', 'beobachten', 'kontrollieren', 'inspizieren']
+        # Prüfe ob Zeile mit • beginnt UND ein Testverb irgendwo enthält
+        if line_clean.startswith('•'):
+            for verb in test_verbs:
+                if verb in line_clean.lower():
+                    return True
+        return False
 
     def extract_requirement_text(self, line: str, req_num: str) -> str:
         """Extracts requirement text by removing the number"""

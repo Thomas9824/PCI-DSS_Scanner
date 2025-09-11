@@ -179,7 +179,7 @@ class PCIRequirementsExtractor:
         if any(line_clean.startswith(indicator) for indicator in self.test_indicators):
             return True
         # Verifica padrões de teste comuns sem marcador
-        test_verbs = ['Examine', 'Observe', 'Entreviste', 'Verifique', 'Inspecione', 'Avalie', 'Examinar', 'Observar', 'Entrevistar', 'Verificar', 'Inspecionar', 'Avaliar']
+        test_verbs = ['Examine', 'Observe', 'Entreviste', 'Verifique', 'Inspecione', 'Avalie', 'examine', 'observe', 'entreviste', 'verifique', 'inspecione', 'avalie']
         # Verifica se a linha começa com marcador + padrão de verbo
         import re
         pattern = r'^[•\-\*]\s*(' + '|'.join(test_verbs) + r')\b'
