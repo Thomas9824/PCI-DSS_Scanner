@@ -1,0 +1,23 @@
+# Requirements pour PCI Auto Scraper
+# Combine les dépendances des deux sous-projets
+
+# Dépendances pour la détection de changements
+selenium==4.35.0
+webdriver-manager==4.0.2
+pandas==2.3.2
+beautifulsoup4==4.13.5
+requests==2.32.5
+lxml==6.0.1
+python-dotenv==1.1.1
+
+# Dépendances supplémentaires pour le téléchargement PDF
+selenium-stealth==1.0.6
+
+# Dépendances pour l'envoi de mails
+resend
+
+# Dépendances pour l'extraction PDF
+PyPDF2==3.0.1
+
+# Dépendances communes (versions harmonisées)
+# beautifulsoup4 et requests sont déjà incluses ci-dessus

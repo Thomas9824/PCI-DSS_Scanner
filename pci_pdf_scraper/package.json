@@ -1,0 +1,16 @@
+{
+  "name": "pci-pdf-downloader",
+  "version": "1.0.0",
+  "description": "Script to download PDF files from PCI Security Standards document library using Playwright",
+  "main": "playwright-download-pdfs.js",
+  "scripts": {
+    "start": "node playwright-download-pdfs.js",
+    "quick": "node playwright-minimal-scraper.js"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.55.0",
+    "playwright": "^1.55.0"
+  },
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,14 @@
+=== RAPPORT DE CHANGEMENTS PCI DSS/SAQ ===
+Date: 2025-08-28 11:01:48
+
+🔄 VERSIONS MISES À JOUR (1):
+--------------------------------------------------
+• PCI DSS (PCI DSS)
+  Ancienne version: v4.0.1 - Jun. 2023
+  Nouvelle version: v4.0.1 - Jun. 2024
+
+📊 RÉSUMÉ:
+--------------------------------------------------
+Total des changements détectés: 1
+Documents inchangés: 44
+Total des documents actuels: 45
