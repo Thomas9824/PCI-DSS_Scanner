@@ -136,6 +136,7 @@ class PCIRequirementsExtractor:
         text = re.sub(r'Oktober \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'♦\s*Informationen zu diesen.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Anforderung Erwartetes Testen Antwort♦.*?(?=\n)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'© 2006[−-]\d+\s+PCI DSS[−-]Anforderung Erwartetes Testen Antwort♦.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Eine Antwort für jede Anforderung ankreuzen.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Eine Antwort ankreuzen.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Abschnitt \d+ :', '', text, flags=re.IGNORECASE)
@@ -499,6 +500,7 @@ class PCIRequirementsExtractor:
             r'^Not Applicable',
             r'^Not Tested',
             r'^♦ Informationen',
+            r'^© 2006[−-]\d+\s+PCI DSS[−-]Anforderung',
             r'^\(Check one response',
             r'^Section \d+',
             r'^All Rights Reserved',
@@ -534,6 +536,7 @@ class PCIRequirementsExtractor:
             r'In Place.*?Not in Place.*?(?=\n|$)',
             r'(In Place|Not in Place|Not Applicable|Not Tested|CCW)(\s+(In Place|Not in Place|Not Applicable|Not Tested|CCW))+',
             r'♦\s*Informationen zu diesen.*?(?=\n|$)',
+            r'© 2006[−-]\d+\s+PCI DSS[−-]Anforderung Erwartetes Testen Antwort♦.*?(?=\n|$)',
             r'\(Check one response.*?\)',
             r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?All Rights Reserved.*?Page \d+',
             r'© 2006[−-]\d+.*?LLC.*?All Rights Reserved.*',
