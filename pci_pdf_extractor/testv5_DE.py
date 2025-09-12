@@ -128,24 +128,31 @@ class PCIRequirementsExtractor:
         text = re.sub(r'PCI DSS v[\d.]+\s+SAQ D für Händler.*?Oktober \d+', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'SAQ D von PCI DSS v[\d.]+.*?Seite \d+.*?(?:Erfüllt|Nicht erfüllt)', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'© 2006[−-]\d+\s+PCI Security Standards Council,\s+LLC\.\s+Alle Rechte vorbehalten\.\s+Seite\s+\w+', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'© 2006[−-]\d+\s+PCI Security Standards Council,\s+LLC\.\s+Alle Rechte vorbehalten\.\s+Seite\s+\d+', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'© 2006[−-]\d+.*?LLC.*?Alle Rechte vorbehalten\.?', '', text, flags=re.IGNORECASE)
         text = re.sub(r'PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Oktober \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'♦\s*Informationen zu diesen.*?(?=\n)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Anforderung Erwartetes Testen Antwort♦.*?(?=\n)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\(Eine Antwort für jede Anforderung ankreuzen.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Eine Antwort ankreuzen.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Abschnitt \d+ :', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Testverfahren\s*$', '', text, flags=re.IGNORECASE | re.MULTILINE)
         
         # Reinige Antworttabellen
+        text = re.sub(r'Vorhanden\s+Vorhanden\s+mit CCW\s+Nicht\s+Anwendbar\s+Nicht\s+Getestet\s+Nicht\s+Vorhanden', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Erfüllt\s+Erfüllt mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht erfüllt', '', text, flags=re.IGNORECASE)
         text = re.sub(r'mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht erfüllt', '', text, flags=re.IGNORECASE)
         text = re.sub(r'mit CCW Nicht anwendbar Nicht getestet Nicht.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Vorhanden.*?Nicht\s+Vorhanden', '', text, flags=re.IGNORECASE)
         
         # Zusätzliche Reinigungsmuster
+        text = re.sub(r'PCI DSS v[\d.]+\s+SAQ D für Händler,\s+Abschnitt \d+:\s+Fragebogen zur Selbstbewertung\s+\w+\s+\d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'PCI DSS v[\d.]+.*?Selbstbewertungsfragebogen.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Abschnitt\s+\d+\s*:\s*Selbstbewertungsfragebogen.*?(?=\n)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Abschnitt\s+\d+\s*:\s*Fragebogen zur Selbstbewertung.*?(?=\n)', '', text, flags=re.IGNORECASE)
         
         # Reinige isolierte Seitenverweise
         text = re.sub(r'Seite \d+\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
