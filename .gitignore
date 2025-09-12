@@ -1,0 +1,23 @@
+# Fichiers de configuration sensibles
+.env
+
+# Logs et rapports
+*.log
+comparison_report_*.txt
+
+# Fichiers SQL volumineux
+bdd/saqv4.sql
+
+# Fichiers Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environnements virtuels
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
