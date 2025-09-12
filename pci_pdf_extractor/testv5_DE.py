@@ -133,7 +133,7 @@ class PCIRequirementsExtractor:
         text = re.sub(r'PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Oktober \d+', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'♦\s*Siehe.*?(?=\n)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'♦\s*Informationen zu diesen.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Eine Antwort ankreuzen.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Abschnitt \d+ :', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Testverfahren\s*$', '', text, flags=re.IGNORECASE | re.MULTILINE)
@@ -436,7 +436,7 @@ class PCIRequirementsExtractor:
         text = re.sub(r'All Rights Reserved.*?Page \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Page \d+.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'In Place.*?Not in Place', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'♦\s*Refer to.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'♦\s*Informationen zu diesen.*', '', text, flags=re.IGNORECASE)
         
         # Remove response table artifacts
         text = re.sub(r'with CCW Not Applicable Not Tested Not.*', '', text, flags=re.IGNORECASE)
@@ -491,7 +491,7 @@ class PCIRequirementsExtractor:
             r'^Not in Place',
             r'^Not Applicable',
             r'^Not Tested',
-            r'^♦ Refer to',
+            r'^♦ Informationen',
             r'^\(Check one response',
             r'^Section \d+',
             r'^All Rights Reserved',
@@ -526,7 +526,7 @@ class PCIRequirementsExtractor:
             r'with CCW\s+Not Applicable\s+Not Tested\s+Not in Place',
             r'In Place.*?Not in Place.*?(?=\n|$)',
             r'(In Place|Not in Place|Not Applicable|Not Tested|CCW)(\s+(In Place|Not in Place|Not Applicable|Not Tested|CCW))+',
-            r'♦\s*Refer to.*?(?=\n|$)',
+            r'♦\s*Informationen zu diesen.*?(?=\n|$)',
             r'\(Check one response.*?\)',
             r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?All Rights Reserved.*?Page \d+',
             r'© 2006[−-]\d+.*?LLC.*?All Rights Reserved.*',

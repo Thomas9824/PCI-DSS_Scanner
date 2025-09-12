@@ -130,6 +130,7 @@ class PCIRequirementsExtractor:
         text = re.sub(r'© 2006[−-]\d+\s+PCI Security Standards Council,\s+LLC\.\s+Todos los derechos reservados\.\s+Página\s+\w+', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Todos los derechos reservados.*?Página \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'© 2006[−-]\d+.*?LLC.*?Todos los derechos reservados\.?', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'© 2006[−-]\s*\d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'PCI Security Standards Council.*?LLC.*?Todos los Derechos Reservados.*?Página \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Todos los Derechos Reservados.*?Página \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Octubre de \d+', '', text, flags=re.IGNORECASE)
@@ -138,10 +139,14 @@ class PCIRequirementsExtractor:
         text = re.sub(r'Sección \d+ :', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Procedimientos de Prueba\s*$', '', text, flags=re.IGNORECASE | re.MULTILINE)
         
-        # Clean response tables
-        text = re.sub(r'En Su Lugar\s+En Su Lugar con CCW\s+No Aplicable\s+No Probado\s+No En Su Lugar', '', text, flags=re.IGNORECASE)
+        # Clean response tables - Enhanced patterns
+        text = re.sub(r'Implementado\s+Implementado con CCW\s+No Aplicable\s+No Probado\s+No Implementado', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'con CCW\s+No Aplicable\s+No Probado\s+No Implementado', '', text, flags=re.IGNORECASE)
         text = re.sub(r'con CCW\s+No Aplicable\s+No Probado\s+No En Su Lugar', '', text, flags=re.IGNORECASE)
         text = re.sub(r'con CCW No Aplicable No Probado No.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Aplicable\s+No\s+Probado\s+No', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'No\s+Aplicable\s+No\s+Probado', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\b(?:Aplicable|No\s+Aplicable|Probado|No\s+Probado|CCW|Implementado|No\s+Implementado)\b(?:\s+(?:Aplicable|No\s+Aplicable|Probado|No\s+Probado|CCW|Implementado|No\s+Implementado)\b)*', '', text, flags=re.IGNORECASE)
         
         # Additional cleaning patterns
         text = re.sub(r'PCI DSS v[\d.]+.*?Self\s*-\s*Assessment\s+Questionnaire.*?(?=\n)', '', text, flags=re.IGNORECASE)
@@ -430,16 +435,23 @@ class PCIRequirementsExtractor:
         text = re.sub(r'SAQ D de PCI DSS.*?Página \d+.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Todos los Derechos Reservados.*?Página \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'© 2006[−-]\d+.*?LLC.*?Todos los Derechos Reservados.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'© 2006[−-]\s*\d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'PCI Security Standards Council.*?LLC.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Todos los Derechos Reservados.*?Página \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Página \d+.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'En Su Lugar.*?No En Su Lugar', '', text, flags=re.IGNORECASE)
         text = re.sub(r'♦\s*Consulte.*', '', text, flags=re.IGNORECASE)
         
-        # Remove response table artifacts
+        # Remove response table artifacts - Enhanced
         text = re.sub(r'con CCW No Aplicable No Probado No.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'En Su Lugar\s+En Su Lugar con CCW\s+No Aplicable\s+No Probado\s+No En Su Lugar', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'(En Su Lugar|No En Su Lugar|No Aplicable|No Probado|CCW)(\s+(En Su Lugar|No En Su Lugar|No Aplicable|No Probado|CCW))*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Implementado\s+Implementado con CCW\s+No Aplicable\s+No Probado\s+No Implementado', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Aplicable\s+No\s+Probado\s+No', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'No\s+Aplicable\s+No\s+Probado', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'(En Su Lugar|No En Su Lugar|No Aplicable|No Probado|CCW|Aplicable|Probado|Implementado|No Implementado)(\s+(En Su Lugar|No En Su Lugar|No Aplicable|No Probado|CCW|Aplicable|Probado|Implementado|No Implementado))*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\b(?:Aplicable|No\s+Aplicable|Probado|No\s+Probado|CCW|Implementado|No\s+Implementado)\b(?:\s+(?:Aplicable|No\s+Aplicable|Probado|No\s+Probado|CCW|Implementado|No\s+Implementado)\b)*', '', text, flags=re.IGNORECASE)
+        
+        # Additional cleanup for fragmented copyright
+        text = re.sub(r'\b\d{4}\b(?:\s*[-−]\s*\d{4})?', '', text)  # Remove year ranges
         
         # Normalize spaces
         text = re.sub(r'\s+', ' ', text)
@@ -451,10 +463,20 @@ class PCIRequirementsExtractor:
         text = re.sub(r'SAQ D de PCI DSS.*?Página \d+.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Todos los Derechos Reservados.*?Página \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'© 2006[−-]\d+.*?LLC.*?Todos los Derechos Reservados.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'© 2006[−-]\s*\d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'PCI Security Standards Council.*?LLC.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Todos los Derechos Reservados.*?Página \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Página \d+.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'En Su Lugar.*?No En Su Lugar', '', text, flags=re.IGNORECASE)
+        
+        # Enhanced response table cleanup
+        text = re.sub(r'Aplicable\s+No\s+Probado\s+No', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'No\s+Aplicable\s+No\s+Probado', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\b(?:Aplicable|No\s+Aplicable|Probado|No\s+Probado|CCW|Implementado|No\s+Implementado)\b(?:\s+(?:Aplicable|No\s+Aplicable|Probado|No\s+Probado|CCW|Implementado|No\s+Implementado)\b)*', '', text, flags=re.IGNORECASE)
+        
+        # Additional cleanup for fragmented copyright
+        text = re.sub(r'\b\d{4}\b(?:\s*[-−]\s*\d{4})?', '', text)  # Remove year ranges
+        
         # Normalize spaces
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
@@ -484,11 +506,12 @@ class PCIRequirementsExtractor:
             r'^Octubre 2024',
             r'^Requisito de PCI DSS',
             r'^Procedimientos de Prueba',
-            r'^Respuesta',
-            r'^En Su Lugar',
-            r'^No En Su Lugar',
+            r'^Implementado',
+            r'^con CCW',
             r'^No Aplicable',
             r'^No Probado',
+            r'^No Implementado',
+            r'^Respuesta',
             r'^♦ Consulte',
             r'^\(Marque una respuesta',
             r'^Sección \d+',
@@ -525,14 +548,19 @@ class PCIRequirementsExtractor:
             r'En Su Lugar\s+En Su Lugar con CCW\s+No Aplicable\s+No Probado\s+No En Su Lugar',
             r'con CCW\s+No Aplicable\s+No Probado\s+No En Su Lugar',
             r'En Su Lugar.*?No En Su Lugar.*?(?=\n|$)',
-            r'(En Su Lugar|No En Su Lugar|No Aplicable|No Probado|CCW)(\s+(En Su Lugar|No En Su Lugar|No Aplicable|No Probado|CCW))+',
+            r'Aplicable\s+No\s+Probado\s+No(?:\s+\w+)?',
+            r'No\s+Aplicable\s+No\s+Probado(?:\s+No)?',
+            r'(En Su Lugar|No En Su Lugar|Implementado|No Aplicable|No Probado|CCW|Aplicable|Probado)(\s+(En Su Lugar|No En Su Lugar|Implementado|No Aplicable|No Probado|CCW|Aplicable|Probado))+',
+            r'\b(?:Aplicable|No\s+Aplicable|Probado|No\s+Probado|CCW|Implementado|No\s+Implementado)\b(?:\s+(?:Aplicable|No\s+Aplicable|Probado|No\s+Probado|CCW|Implementado|No\s+Implementado)\b)*',
             r'♦\s*Consulte.*?(?=\n|$)',
             r'\(Marque una respuesta.*?\)',
             r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Todos los Derechos Reservados.*?Página \d+',
             r'© 2006[−-]\d+.*?LLC.*?Todos los Derechos Reservados.*',
+            r'© 2006[−-]\s*\d+',
             r'PCI Security Standards Council.*?LLC.*',
             r'Todos los Derechos Reservados.*?Página \d+',
             r'Página \d+[^\w]*$',
+            r'\b\d{4}\b(?:\s*[-−]\s*\d{4})?(?:\s+\w+)*',  # Remove year patterns
         ]
         
         for pattern in patterns_to_remove:
@@ -659,7 +687,7 @@ class PCIRequirementsExtractor:
         print(f"Structure CSV: {len(csv_data)} exigences avec colonnes simplifiées")
 
 def main():
-    pdf_path = "PCI-DSS-v4-0-1-SAQ-D-Merchant-LA.pdf"
+    pdf_path = "/Users/thomasmionnet/Desktop/pci-dss/pci_scraper/downloads/latest/SAQ_SAQ D Merchant_ES.pdf"
     print("EXTRACTEUR PCI DSS ESPAGNOL")
     print("=" * 60)
     

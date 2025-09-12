@@ -19,8 +19,8 @@ class PCIRequirementsExtractor:
         
         # Marcadores para identificar seções em português
         self.test_indicators = ['• Examine', '• Observe', '• Entreviste', '• Verifique', '• Inspecione', '• Avalie']
-        self.applicability_marker = "Notas de Aplicabilidade"
-        self.guidance_marker = "Orientação"
+        self.applicability_marker = "Observações de Aplicabilidade"
+        self.guidance_marker = "Orientações"
 
     def find_start_page(self) -> int:
         """Detecta automaticamente a página inicial (contendo 1.1.1)"""
@@ -134,13 +134,14 @@ class PCIRequirementsExtractor:
         text = re.sub(r'Todos os Direitos Reservados.*?Página \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Outubro de \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'♦\s*Consulte.*?(?=\n)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Requisito do PCI DSS.*?Resposta♦.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Marque uma resposta.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Seção \d+ :', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Procedimentos de Teste\s*$', '', text, flags=re.IGNORECASE | re.MULTILINE)
         
         # Limpa tabelas de resposta
-        text = re.sub(r'No Local\s+No Local com CCW\s+Não Aplicável\s+Não Testado\s+Não no Local', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'com CCW\s+Não Aplicável\s+Não Testado\s+Não no Local', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Implementado\s+Implementado com CCW\s+Não Aplicável\s+Não Testado\s+Não Implementado', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'com CCW\s+Não Aplicável\s+Não Testado\s+Não Implementado', '', text, flags=re.IGNORECASE)
         text = re.sub(r'com CCW Não Aplicável Não Testado Não.*', '', text, flags=re.IGNORECASE)
         
         # Padrões de limpeza adicionais
@@ -434,11 +435,12 @@ class PCIRequirementsExtractor:
         text = re.sub(r'All Rights Reserved.*?Page \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Page \d+.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'In Place.*?Not in Place', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'♦\s*Refer to.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'♦\s*Consulte.*', '', text, flags=re.IGNORECASE)
         
         # Remove response table artifacts
         text = re.sub(r'with CCW Not Applicable Not Tested Not.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'In Place\s+In Place with CCW\s+Not Applicable\s+Not Tested\s+Not in Place', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Implementado\s+Implementado com CCW\s+Não Aplicável\s+Não Testado\s+Não Implementado', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'com CCW\s+Não Aplicável\s+Não Testado\s+Não Implementado', '', text, flags=re.IGNORECASE)
         text = re.sub(r'(In Place|Not in Place|Not Applicable|Not Tested|CCW)(\s+(In Place|Not in Place|Not Applicable|Not Tested|CCW))*', '', text, flags=re.IGNORECASE)
         
         # Normalize spaces
@@ -449,6 +451,8 @@ class PCIRequirementsExtractor:
         """Cleans guidance text by removing artifacts"""
         # Remove similar artifacts - more comprehensive patterns
         text = re.sub(r'PCI DSS SAQ D.*?Page \d+.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'PCI DSS v4.0.1 SAQ D para Comerciantes, Seção 2: Questionário de Autoavaliação Outubro de 2024', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'© 2006-2024 PCI Security Standards Council, LLC. Todos os Direitos Reservados. Página \d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?All Rights Reserved.*?Page \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'© 2006[−-]\d+.*?LLC.*?All Rights Reserved.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'PCI Security Standards Council.*?LLC.*', '', text, flags=re.IGNORECASE)
@@ -478,18 +482,26 @@ class PCIRequirementsExtractor:
     def _should_ignore_line(self, line: str) -> bool:
         """Determines if a line should be ignored"""
         ignore_patterns = [
+            r'^PCI DSS v4.0.1 SAQ D para Comerciantes, Seção 2: Questionário de Autoavaliação Outubro de 2024',
+            r'^© 2006-2024 PCI Security Standards Council, LLC. Todos os Direitos Reservados. Página \d+',
+            r'^© 2006[−-]\d+.*PCI Security Standards Council, LLC.*Todos os Direitos Reservados.*Página \d+',
             r'^PCI DSS SAQ D',
             r'^© 2006[−-]\d+',
             r'^Page \d+',
-            r'^October 2024',
-            r'^PCI DSS Requirement',
-            r'^Testing Procedures',
+            r'^Outubro de 2024',
+            r'^Requisito de PCI DSS',
+            r'^Procedimentos de Teste',
             r'^Response',
-            r'^In Place',
-            r'^Not in Place',
-            r'^Not Applicable',
-            r'^Not Tested',
-            r'^♦ Refer to',
+            r'^Implementado',
+            r'^Implementado com CCW',
+            r'^Não Aplicável',
+            r'^Não Testado',
+            r'^Não Implementado',
+            r'^No Local',
+            r'^Não no Local',
+            r'^Não Aplicável',
+            r'^Não Testado',
+            r'^♦ Consulte',
             r'^\(Check one response',
             r'^Section \d+',
             r'^All Rights Reserved',
@@ -497,7 +509,7 @@ class PCIRequirementsExtractor:
             r'^PCI Security Standards Council',
             r'^Self\s*-\s*Assessment\s+Questionnaire',
             r'^PCI DSS v[\d.]+',
-            r'© 2006[−-]\d+.*PCI Security Standards Council.*LLC.*All Rights Reserved.*Page \d+',
+            r'© 2006[−-]\d+.*PCI Security Standards Council, LLC.*Todos os Direitos Reservados.*Página \d+',
         ]
         
         line_lower = line.lower()
@@ -506,7 +518,7 @@ class PCIRequirementsExtractor:
                 return True
                 
         # Check if line contains copyright artifacts anywhere
-        if re.search(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?All Rights Reserved', line, re.IGNORECASE):
+        if re.search(r'© 2006[−-]\d+.*?PCI Security Standards Council, LLC.*?Todos os Direitos Reservados.*?Página \d+', line, re.IGNORECASE):
             return True
             
         # Ignore very short lines that are probably noise
@@ -519,18 +531,19 @@ class PCIRequirementsExtractor:
         """Removes questionnaire response checkbox artifacts"""
         # Remove all variations of response checkboxes and copyright/page artifacts
         patterns_to_remove = [
-            r'with CCW Not Applicable Not Tested Not.*?(?=\n|$)',
-            r'In Place\s+In Place with CCW\s+Not Applicable\s+Not Tested\s+Not in Place',
-            r'with CCW\s+Not Applicable\s+Not Tested\s+Not in Place',
-            r'In Place.*?Not in Place.*?(?=\n|$)',
-            r'(In Place|Not in Place|Not Applicable|Not Tested|CCW)(\s+(In Place|Not in Place|Not Applicable|Not Tested|CCW))+',
-            r'♦\s*Refer to.*?(?=\n|$)',
+            r'com CCW Não Aplicável Não Testado Não.*?(?=\n|$)',
+            r'Implementado\s+Implementado com CCW\s+Não Aplicável\s+Não Testado\s+Não Implementado',
+            r'com CCW\s+Não Aplicável\s+Não Testado\s+Não Implementado',
+            r'Implementado.*?Não Implementado.*?(?=\n|$)',
+            r'(Implementado|Implementado com CCW|Não Aplicável|Não Testado|Não Implementado|CCW)(\s+(Implementado|Implementado com CCW|Não Aplicável|Não Testado|Não Implementado|CCW))+',
+            r'(Implementado|Implementado com CCW|Não Aplicável|Não Testado|Não Implementado|CCW)(\s+(Implementado|Implementado com CCW|Não Aplicável|Não Testado|Não Implementado|CCW))+',
+            r'♦\s*Consulte.*?(?=\n|$)',
             r'\(Check one response.*?\)',
-            r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?All Rights Reserved.*?Page \d+',
-            r'© 2006[−-]\d+.*?LLC.*?All Rights Reserved.*',
+            r'© 2006[−-]\d+.*?PCI Security Standards Council, LLC.*?Todos os Direitos Reservados.*?Página \d+',
+            r'© 2006[−-]\d+.*?LLC.*?Todos os Direitos Reservados.*',
             r'PCI Security Standards Council.*?LLC.*',
-            r'All Rights Reserved.*?Page \d+',
-            r'Page \d+[^\w]*$',
+            r'Todos os Direitos Reservados.*?Página \d+',
+            r'Página \d+[^\w]*$',
         ]
         
         for pattern in patterns_to_remove:
