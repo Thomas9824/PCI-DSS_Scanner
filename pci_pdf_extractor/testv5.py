@@ -1,247 +1,265 @@
 #!/usr/bin/env python3
 """
-Extracteur automatique d'exigences PCI DSS (Version 5 - Améliorée)
-Automatic PCI DSS Requirements Extractor (Version 5 - Improved)
-Extrait toutes les exigences du document SAQ D v4.0.1 (pages 16-119)
-Format de sortie: {'req_num': '...', 'text': '...', 'tests': [...], 'guidance': '...'}
+Extracteur intelligent d'exigences PCI DSS - Version française spécialisée (V5)
+Module d'extraction et parsing avancé pour documents SAQ/PCI DSS français
+Architecture : PDF Reading -> Text Cleaning -> Pattern Recognition -> Structured Extraction
+Format structuré: {'req_num': '...', 'text': '...', 'tests': [...], 'guidance': '...'}
 """
-import re
-import json
-import PyPDF2
-from typing import List, Dict, Any, Tuple
+import re  # Expressions régulières pour parsing et nettoyage de texte
+import json  # Export des données structurées en format JSON
+import PyPDF2  # Extraction de texte depuis fichiers PDF
+from typing import List, Dict, Any, Tuple  # Annotations de types pour robustesse du code
 
 class PCIRequirementsExtractor:
-    """Classe principale pour extraire les exigences PCI DSS depuis un PDF"""
+    """
+    Extracteur spécialisé pour documents PCI DSS français avec parsing intelligent
+    Combine détection automatique de structure, nettoyage de texte et extraction multi-patterns
+    """
 
     def __init__(self, pdf_path: str):
-        self.pdf_path = pdf_path
-        self.requirements = []
-        
-        # Marqueurs pour identifier les sections avec plus de précision
+        self.pdf_path = pdf_path  # Chemin vers le fichier PDF source
+        self.requirements = []    # Cache des exigences extraites avec métadonnées
+
+        # Patterns de reconnaissance spécifiques au français pour les procédures de test
         self.test_indicators = ['• Examiner', '• Observer', '• Interroger', '• Vérifier', '• Inspecter']
-        self.applicability_marker = "Notes d'Applicabilité"
-        self.guidance_marker = "Conseils"
+
+        # Marqueurs de sections spécialisées (terminologie française officielle PCI DSS)
+        self.applicability_marker = "Notes d'Applicabilité"  # Section notes d'applicabilité
+        self.guidance_marker = "Conseils"                   # Section conseils/guidance
 
     def find_start_page(self) -> int:
-        """Détecte automatiquement la page de début (contenant 1.1.1)"""
+        """Détecteur automatique de page de début par recherche pattern 1.1.1"""
         try:
             with open(self.pdf_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
-                
+
+                # Balayage séquentiel pour localiser la première exigence PCI DSS (1.1.1)
                 for page_num in range(len(pdf_reader.pages)):
                     page_text = pdf_reader.pages[page_num].extract_text()
-                    # Chercher le pattern 1.1.1 au début d'une ligne
+
+                    # Pattern matching : recherche de "1.1.1" en début de ligne
                     if re.search(r'^1\.1\.1\s+', page_text, re.MULTILINE):
                         print(f"Page de début détectée: {page_num + 1} (contient 1.1.1)")
                         return page_num
-                        
+
         except Exception as e:
             print(f"Erreur lors de la recherche de la page de début: {e}")
-            
-        # Fallback vers la page 16 si pas trouvé
+
+        # Stratégie de fallback avec page standard
         print("Page de début non trouvée, utilisation de la page 16 par défaut")
         return 15
     
     def find_end_page(self) -> int:
-        """Détecte automatiquement la page de fin (contenant la plus grande combinaison)"""
+        """Algorithme de détection de fin basé sur la hiérarchie des exigences PCI DSS"""
         try:
             with open(self.pdf_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
                 highest_requirement = ""
                 end_page = len(pdf_reader.pages) - 1
-                
-                # Chercher la plus grande combinaison de numéros
+
+                # Pattern pour numérotation hiérarchique PCI DSS (ex: 12.3.4.1)
                 pattern = r'^(\d+\.\d+(?:\.\d+)*(?:\.\d+)*)\s+'
-                
+
+                # Balayage complet pour identifier la dernière exigence valide
                 for page_num in range(len(pdf_reader.pages)):
                     page_text = pdf_reader.pages[page_num].extract_text()
                     matches = re.findall(pattern, page_text, re.MULTILINE)
-                    
+
                     for match in matches:
-                        # Vérifier que c'est un numéro d'exigence PCI valide (1-12)
+                        # Validation : exigences PCI DSS dans la plage 1-12
                         parts = match.split('.')
                         if len(parts) >= 2:
                             main_num = int(parts[0])
                             if 1 <= main_num <= 12:
-                                # Comparer avec le plus haut trouvé jusqu'à présent
+                                # Comparaison hiérarchique pour trouver la plus haute exigence
                                 if self._is_higher_requirement(match, highest_requirement):
                                     highest_requirement = match
                                     end_page = page_num
-                
+
                 if highest_requirement:
                     print(f"Page de fin détectée: {end_page + 1} (dernière exigence: {highest_requirement})")
                     return end_page
-                    
+
         except Exception as e:
             print(f"Erreur lors de la recherche de la page de fin: {e}")
-            
-        # Fallback vers la page 129 si pas trouvé
+
+        # Fallback : page standard pour documents SAQ
         print("Page de fin non trouvée, utilisation de la page 129 par défaut")
         return 128
     
     def _is_higher_requirement(self, req1: str, req2: str) -> bool:
-        """Compare deux numéros d'exigence pour déterminer lequel est le plus haut"""
+        """Comparateur hiérarchique pour numérotation PCI DSS (ex: 12.3.4 > 12.3.3)"""
         if not req2:
             return True
-            
+
+        # Conversion en arrays numériques pour comparaison lexicographique
         parts1 = [int(x) for x in req1.split('.')]
         parts2 = [int(x) for x in req2.split('.')]
-        
-        # Égaliser les longueurs avec des zéros
+
+        # Normalisation des longueurs avec padding de zéros
         max_len = max(len(parts1), len(parts2))
         parts1.extend([0] * (max_len - len(parts1)))
         parts2.extend([0] * (max_len - len(parts2)))
-        
+
+        # Comparaison lexicographique des composants hiérarchiques
         return parts1 > parts2
 
     def read_pdf_content(self) -> str:
-        """Lit le contenu du PDF et retourne le texte complet avec détection automatique des pages"""
+        """Lecteur PDF intelligent avec détection automatique des boundaries d'extraction"""
         try:
             with open(self.pdf_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
                 text = ""
-                
-                # Détection automatique des pages de début et fin
+
+                # Phase 1: Détection automatique des limites du document
                 start_page = self.find_start_page()
                 end_page = self.find_end_page()
-                
-                # S'assurer que end_page est après start_page
+
+                # Validation et correction des boundaries
                 if end_page <= start_page:
-                    end_page = min(len(pdf_reader.pages) - 1, start_page + 100)
+                    end_page = min(len(pdf_reader.pages) - 1, start_page + 100)  # Limite sécurisée
                     print(f"Ajustement de la page de fin à {end_page + 1}")
-                
+
                 print(f"Extraction des pages {start_page + 1} à {end_page + 1}")
-                
+
+                # Phase 2: Extraction séquentielle du texte brut
                 for page_num in range(start_page, end_page + 1):
                     if page_num < len(pdf_reader.pages):
                         page = pdf_reader.pages[page_num]
                         text += page.extract_text() + "\n"
-                        
+
             return text
         except Exception as e:
             print(f"Erreur lors de la lecture du PDF: {e}")
             return ""
 
     def clean_text(self, text: str) -> str:
-        """Nettoie le texte extrait du PDF en supprimant les artefacts"""
+        """Système de nettoyage avancé pour suppression des artefacts SAQ français"""
+        # Suppression des headers/footers récurrents du document SAQ
         text = re.sub(r'SAQ D de PCI DSS v[\d.]+.*?Page \d+.*?(?:En Place|Pas en Place)', '', text, flags=re.DOTALL | re.IGNORECASE)
+
+        # Nettoyage des métadonnées de copyright et version
         text = re.sub(r'© 2006-\d+.*?LLC.*?Tous Droits Réservés\.', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Octobre 2024', '', text, flags=re.IGNORECASE)
+
+        # Suppression des références croisées et instructions de navigation
         text = re.sub(r'♦\s*Se reporter.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Cocher une réponse.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Section \d+ :', '', text, flags=re.IGNORECASE)
-        
-        # Nettoyer les tableaux de réponses 
+
+        # Nettoyage spécialisé des tableaux de conformité SAQ
         text = re.sub(r'En Place\s+En Place avec CCW\s+Non Applicable\s+Non Testé\s+Pas en Place', '', text, flags=re.IGNORECASE)
         text = re.sub(r'avec CCW\s+Non Applicable\s+Non Testé\s+Pas en Place', '', text, flags=re.IGNORECASE)
         text = re.sub(r'avec CCW Non Applicable Non Testé Pas.*', '', text, flags=re.IGNORECASE)
-        
-        # Remplacer les sauts de ligne multiples par un seul
-        text = re.sub(r'\n\s*\n', '\n\n', text)
-        # Supprimer les espaces en début/fin de ligne
-        lines = [line.strip() for line in text.splitlines()]
+
+        # Normalisation des espaces et mise en forme
+        text = re.sub(r'\n\s*\n', '\n\n', text)  # Consolidation des sauts de ligne
+        lines = [line.strip() for line in text.splitlines()]  # Trim de chaque ligne
         return "\n".join(lines)
 
     def is_requirement_number(self, line: str) -> str:
-        """Vérifie si une ligne commence par un numéro d'exigence valide"""
-        # Pattern plus précis pour les numéros d'exigence
+        """Validateur de numérotation hiérarchique PCI DSS avec validation de plage"""
+        # Pattern regex pour structure hiérarchique (ex: 1.2.3.4)
         pattern = r'^(\d+\.\d+(?:\.\d+)*(?:\.\d+)*)\s+'
         match = re.match(pattern, line.strip())
         if match:
             req_num = match.group(1)
-            # Éviter les numéros de page ou de version et valider la plage
+
+            # Validation de conformité PCI DSS : plage 1-12 pour exigences principales
             parts = req_num.split('.')
             if len(parts) >= 2:
                 main_num = int(parts[0])
-                # Les exigences PCI vont de 1 à 12
-                if 1 <= main_num <= 12:
+                if 1 <= main_num <= 12:  # Scope PCI DSS officiel
                     return req_num
         return ""
 
     def is_test_line(self, line: str) -> bool:
-        """Vérifie si une ligne est une ligne de test"""
+        """Détecteur de procédures de test basé sur les verbes d'action français"""
         line_clean = line.strip()
+        # Matching des indicateurs de test français PCI DSS
         return any(line_clean.startswith(indicator) for indicator in self.test_indicators)
 
     def extract_requirement_text(self, line: str, req_num: str) -> str:
-        """Extrait le texte de l'exigence en supprimant le numéro"""
-        # Trouver la position après le numéro d'exigence
+        """Extracteur de texte d'exigence avec suppression du préfixe numérique"""
+        # Pattern matching et suppression du numéro d'exigence + espaces
         pattern = rf'^{re.escape(req_num)}\s+'
         cleaned_line = re.sub(pattern, '', line.strip())
         return cleaned_line
 
     def parse_requirements(self, content: str) -> List[Dict[str, Any]]:
-        """Parse les exigences du contenu texte"""
+        """Parser principal avec machine à états pour extraction structurée des exigences PCI DSS"""
         requirements = []
         lines = content.splitlines()
         i = 0
         current_req = None
 
+        # Machine à états : ligne par ligne avec gestion contextuelle
         while i < len(lines):
             line = lines[i].strip()
-            
-            if not line:  # Ignorer les lignes vides
+
+            if not line:  # Skip des lignes vides
                 i += 1
                 continue
 
-            # Vérifier si c'est le début d'une nouvelle exigence
+            # État 1: Détection d'une nouvelle exigence
             req_num = self.is_requirement_number(line)
             if req_num:
-                # Sauvegarder l'exigence précédente si elle existe
+                # Finalisation et sauvegarde de l'exigence précédente
                 if current_req:
                     self._finalize_requirement(current_req)
                     if not any(req['req_num'] == current_req['req_num'] for req in requirements):
                         requirements.append(current_req)
 
-                # Initialiser une nouvelle exigence
+                # Initialisation d'une nouvelle exigence avec structure complète
                 req_text = self.extract_requirement_text(line, req_num)
                 current_req = {
-                    'req_num': req_num,
-                    'text': req_text,
-                    'tests': [],
-                    'guidance': ''
+                    'req_num': req_num,        # Numéro hiérarchique (ex: 1.2.3)
+                    'text': req_text,          # Texte principal de l'exigence
+                    'tests': [],               # Array des procédures de test
+                    'guidance': ''             # Notes d'applicabilité et conseils
                 }
                 i += 1
                 continue
 
-            # Si une exigence est en cours de traitement
+            # État 2: Traitement contextuel selon le type de contenu
             if current_req:
-                # Vérifier si c'est une ligne de test 
+                # État 2a: Détection et extraction de procédure de test
                 if self.is_test_line(line):
-                    # Extraire le test complet en préservant le verbe d'action
+                    # Préservation du verbe d'action français (Examiner, Observer, etc.)
                     test_text = line
-                    # Nettoyer la puce mais garder le verbe
-                    test_text = re.sub(r'^•\s*', '', test_text).strip()
-                    
-                    # Rassembler les lignes de continuation pour ce test
+                    test_text = re.sub(r'^•\s*', '', test_text).strip()  # Suppression puce
+
+                    # Agrégation multi-lignes pour tests complexes
                     j = i + 1
                     while j < len(lines):
                         next_line = lines[j].strip()
                         if not next_line:
                             j += 1
                             continue
-                        # Arrêter si on trouve une nouvelle exigence, un nouveau test, ou une section spéciale
-                        if (self.is_requirement_number(next_line) or 
+
+                        # Conditions d'arrêt : nouvelle section détectée
+                        if (self.is_requirement_number(next_line) or
                             self.is_test_line(next_line) or
                             next_line.startswith(self.applicability_marker) or
                             next_line.startswith(self.guidance_marker) or
                             self._should_ignore_line(next_line)):
                             break
-                        # Ajouter la continuation au test en cours
+
+                        # Continuation du test en cours
                         test_text += " " + next_line
                         j += 1
-                    
-                    # Nettoyer le test des artefacts
+
+                    # Nettoyage et validation avant stockage
                     test_text = self._clean_test_text(test_text)
-                    if test_text and len(test_text) > 10:  # Seulement les tests significatifs
+                    if test_text and len(test_text) > 10:  # Filtre des tests significatifs
                         current_req['tests'].append(test_text)
-                    
+
                     i = j
                     continue
 
-                # Vérifier si c'est la section Notes d'Applicabilité 
+                # État 2b: Extraction des Notes d'Applicabilité
                 elif line.startswith(self.applicability_marker):
-                    # Extraire le contenu des notes d'applicabilité dans le champ guidance
+                    # Extraction du contenu guidance avec agrégation multi-lignes
                     guidance_text = line[len(self.applicability_marker):].strip(': ')
                     j = i + 1
                     while j < len(lines):
@@ -249,20 +267,23 @@ class PCIRequirementsExtractor:
                         if not next_line:
                             j += 1
                             continue
-                        if (self.is_requirement_number(next_line) or 
+
+                        # Arrêt si nouvelle section détectée
+                        if (self.is_requirement_number(next_line) or
                             self.is_test_line(next_line) or
                             next_line.startswith(self.guidance_marker) or
                             self._should_ignore_line(next_line)):
                             break
+
                         guidance_text += " " + next_line
                         j += 1
-                    
-                    # Nettoyer et stocker dans guidance
+
+                    # Nettoyage et stockage dans le champ guidance
                     current_req['guidance'] = self._clean_guidance_text(guidance_text)
                     i = j
                     continue
 
-                # Vérifier si c'est la section Conseils
+                # État 2c: Extraction de la section Conseils
                 elif line.startswith(self.guidance_marker):
                     guidance_text = line[len(self.guidance_marker):].strip(': ')
                     j = i + 1
@@ -271,35 +292,37 @@ class PCIRequirementsExtractor:
                         if not next_line:
                             j += 1
                             continue
-                        if (self.is_requirement_number(next_line) or 
+
+                        # Conditions d'arrêt similaires aux autres sections
+                        if (self.is_requirement_number(next_line) or
                             self.is_test_line(next_line) or
                             next_line.startswith(self.applicability_marker) or
                             self._should_ignore_line(next_line)):
                             break
+
                         guidance_text += " " + next_line
                         j += 1
-                    
+
                     current_req['guidance'] = self._clean_guidance_text(guidance_text)
                     i = j
                     continue
 
-                # Vérifier si c'est du contenu à ignorer
+                # État 2d: Filtrage du contenu non pertinent
                 elif self._should_ignore_line(line):
                     i += 1
                     continue
 
-                # Sinon, c'est du texte appartenant à l'exigence principale
+                # État 2e: Traitement du texte principal de l'exigence
                 else:
-                    # Vérifier si le texte contient des tests cachés
-                    # ET gérer les tests sur plusieurs lignes
+                    # Extraction des tests intégrés dans le texte + gestion multi-lignes
                     cleaned_line, j = self._extract_tests_from_text_line_multiline(line, current_req, lines, i)
-                    
-                    # Si on a traité des lignes supplémentaires pour des tests multi-lignes
+
+                    # Avancement de l'index si des lignes additionnelles ont été traitées
                     if j > i:
                         i = j
                         continue
-                    
-                    # Ajouter au texte principal seulement si ce n'est pas redondant ou parasite
+
+                    # Agrégation au texte principal avec validation anti-redondance
                     if cleaned_line and self._is_valid_text_line(cleaned_line, current_req['text']):
                         if current_req['text']:
                             current_req['text'] += " " + cleaned_line
@@ -317,255 +340,295 @@ class PCIRequirementsExtractor:
         return requirements
 
     def _extract_tests_from_text_line_multiline(self, line: str, current_req: Dict[str, Any], all_lines: List[str], current_index: int) -> Tuple[str, int]:
-        """Extrait les tests cachés dans une ligne de texte et gère les tests multi-lignes"""
+        """Extrait les tests cachés dans une ligne de texte et gère les tests multi-lignes
+
+        Méthode avancée de détection et extraction des procédures de test intégrées
+        dans le texte principal avec support de la continuité multi-lignes
+        """
         remaining_text = line
         processed_lines = current_index
-        
-        # Trouver tous les tests dans la ligne
+
+        # Scanner tous les indicateurs de test pour détection exhaustive
         for indicator in self.test_indicators:
-            verb = indicator[2:]  # Enlever "• " pour avoir juste "Examiner", "Observer", etc.
-            pattern = rf'•\s*{re.escape(verb)}[^•]*'
-            matches = list(re.finditer(pattern, remaining_text, re.IGNORECASE))
+            verb = indicator[2:]  # Extraction du verbe d'action français ("Examiner", "Observer", etc.)
+            pattern = rf'•\s*{re.escape(verb)}[^•]*'  # Pattern regex pour détecter le test avec puce
+            matches = list(re.finditer(pattern, remaining_text, re.IGNORECASE))  # Recherche insensible à la casse
             
-            for match in reversed(matches):  # Traiter de droite à gauche pour préserver les positions
+            for match in reversed(matches):  # Traitement inverse pour préserver les positions des regex
                 test_text = match.group(0)
-                test_text = re.sub(r'^•\s*', '', test_text).strip()
-                
-                # Vérifier si le test semble incomplet (très court ou se termine abruptement)
-                # et rassembler les lignes suivantes si nécessaire
+                test_text = re.sub(r'^•\s*', '', test_text).strip()  # Suppression de la puce initiale
+
+                # Détection des tests incomplets nécessitant une agrégation multi-lignes
+                # Critères: longueur insuffisante ou absence de ponctuation finale
                 if len(test_text) < 30 or not test_text.endswith('.'):
-                    # Rassembler les lignes suivantes pour ce test
+                    # Algorithme d'agrégation séquentielle pour tests multi-lignes
                     j = current_index + 1
-                    while j < len(all_lines):
+                    while j < len(all_lines):  # Parcours des lignes suivantes
                         next_line = all_lines[j].strip()
                         if not next_line:
                             j += 1
                             continue
-                        
-                        # Arrêter si on trouve une nouvelle exigence, un nouveau test, ou une section spéciale
-                        if (self.is_requirement_number(next_line) or 
-                            self.is_test_line(next_line) or
-                            next_line.startswith(self.applicability_marker) or
-                            next_line.startswith(self.guidance_marker) or
-                            self._should_ignore_line(next_line)):
+
+                        # Conditions d'arrêt : détection de nouvelles sections structurelles
+                        if (self.is_requirement_number(next_line) or   # Nouvelle exigence détectée
+                            self.is_test_line(next_line) or            # Nouveau test indépendant
+                            next_line.startswith(self.applicability_marker) or  # Section applicabilité
+                            next_line.startswith(self.guidance_marker) or       # Section conseils
+                            self._should_ignore_line(next_line)):       # Contenu non pertinent
                             break
-                        
-                        # Ajouter la continuation au test en cours
+
+                        # Agrégation de la continuation avec espace séparateur
                         test_text += " " + next_line
-                        processed_lines = j  # Marquer cette ligne comme traitée
-                        
-                        # Si on a une phrase complète (se termine par . ! ou ?), on peut arrêter
+                        processed_lines = j  # Marquage de ligne comme traitée pour éviter la redondance
+
+                        # Détection de fin de phrase complète pour optimiser l'arrêt
                         if next_line.endswith('.') or next_line.endswith('!') or next_line.endswith('?'):
-                            break
-                        
+                            break  # Arrêt sur ponctuation terminale
+
                         j += 1
                 
-                # Nettoyer le test des artefacts
+                # Pipeline de nettoyage pour suppression des artefacts PDF
                 test_text = self._clean_test_text(test_text)
-                
-                if test_text and len(test_text) > 10:
-                    # Ajouter le test s'il n'existe pas déjà
+
+                if test_text and len(test_text) > 10:  # Filtre de qualité minimum
+                    # Déduplication automatique des tests identiques
                     if test_text not in current_req['tests']:
                         current_req['tests'].append(test_text)
-                    
-                    # Supprimer le test du texte restant
+
+                    # Suppression du segment test du texte principal (chirurgie de string)
                     remaining_text = remaining_text[:match.start()] + ' ' + remaining_text[match.end():]
         
-        # Nettoyer le texte restant
+        # Normalisation finale : compression des espaces multiples
         remaining_text = re.sub(r'\s+', ' ', remaining_text).strip()
-        return remaining_text, processed_lines
+        return remaining_text, processed_lines  # Retourne le texte nettoyé + index de fin
 
     def _extract_tests_from_text_line(self, line: str, current_req: Dict[str, Any]) -> str:
-        """Extrait les tests cachés dans une ligne de texte et les ajoute à tests[] (version simple)"""
+        """Extrait les tests cachés dans une ligne de texte et les ajoute à tests[] (version simple)
+
+        Version simplifiée sans gestion multi-lignes pour les tests complets sur une ligne
+        """
         remaining_text = line
-        
-        # Trouver tous les tests dans la ligne
+
+        # Détection exhaustive des indicateurs de test dans la ligne
         for indicator in self.test_indicators:
-            verb = indicator[2:]  # Enlever "• " pour avoir juste "Examiner", "Observer", etc.
-            pattern = rf'•\s*{re.escape(verb)}[^•]*'
-            matches = list(re.finditer(pattern, remaining_text, re.IGNORECASE))
+            verb = indicator[2:]  # Extraction du verbe d'action français seul
+            pattern = rf'•\s*{re.escape(verb)}[^•]*'  # Pattern d'identification test avec puce
+            matches = list(re.finditer(pattern, remaining_text, re.IGNORECASE))  # Recherche insensible casse
             
-            for match in reversed(matches):  # Traiter de droite à gauche pour préserver les positions
+            for match in reversed(matches):  # Traitement inverse pour conservation des positions
                 test_text = match.group(0)
-                test_text = re.sub(r'^•\s*', '', test_text).strip()
-                test_text = self._clean_test_text(test_text)
-                
-                if test_text and len(test_text) > 10:
-                    # Ajouter le test s'il n'existe pas déjà
+                test_text = re.sub(r'^•\s*', '', test_text).strip()  # Suppression puce initiale
+                test_text = self._clean_test_text(test_text)  # Pipeline de nettoyage artefacts
+
+                if test_text and len(test_text) > 10:  # Filtre qualité longueur minimum
+                    # Système de déduplication pour éviter les tests redondants
                     if test_text not in current_req['tests']:
                         current_req['tests'].append(test_text)
-                    
-                    # Supprimer le test du texte restant
+
+                    # Extraction chirurgicale du segment test du texte principal
                     remaining_text = remaining_text[:match.start()] + ' ' + remaining_text[match.end():]
         
-        # Nettoyer le texte restant
+        # Normalisation finale avec compression des espaces
         remaining_text = re.sub(r'\s+', ' ', remaining_text).strip()
-        return remaining_text
+        return remaining_text  # Retour du texte nettoyé sans les tests extraits
 
     def _clean_test_text(self, text: str) -> str:
-        """Nettoie le texte d'un test en supprimant les artefacts"""
-        # Supprimer les artefacts de mise en page
-        text = re.sub(r'SAQ D de PCI DSS.*?Page \d+.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'© 2006-.*?LLC.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'En Place.*?Pas en Place', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'♦\s*Se reporter.*', '', text, flags=re.IGNORECASE)
+        """Nettoie le texte d'un test en supprimant les artefacts
+
+        Pipeline de nettoyage spcialisé pour supprimer les éléments parasites
+        liés à la conversion PDF et aux tableaux de réponse
+        """
+        # Suppression des artefacts de mise en page PDF
+        text = re.sub(r'SAQ D de PCI DSS.*?Page \d+.*', '', text, flags=re.IGNORECASE)  # Headers/footers
+        text = re.sub(r'© 2006-.*?LLC.*', '', text, flags=re.IGNORECASE)  # Copyright notices
+        text = re.sub(r'En Place.*?Pas en Place', '', text, flags=re.IGNORECASE)  # Status indicators
+        text = re.sub(r'♦\s*Se reporter.*', '', text, flags=re.IGNORECASE)  # Cross-references
         
-        # Supprimer les artefacts de tableau de réponse
-        text = re.sub(r'avec CCW Non Applicable Non Testé Pas.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'En Place\s+En Place avec CCW\s+Non Applicable\s+Non Testé\s+Pas en Place', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'(En Place|Pas en Place|Non Applicable|Non Testé|CCW)(\s+(En Place|Pas en Place|Non Applicable|Non Testé|CCW))*', '', text, flags=re.IGNORECASE)
-        
-        # Normaliser les espaces
-        text = re.sub(r'\s+', ' ', text)
-        return text.strip()
+        # Élimination des artefacts de tableaux de réponse de conformité
+        text = re.sub(r'avec CCW Non Applicable Non Testé Pas.*', '', text, flags=re.IGNORECASE)  # Fragments de tableau
+        text = re.sub(r'En Place\s+En Place avec CCW\s+Non Applicable\s+Non Testé\s+Pas en Place', '', text, flags=re.IGNORECASE)  # Headers complets
+        text = re.sub(r'(En Place|Pas en Place|Non Applicable|Non Testé|CCW)(\s+(En Place|Pas en Place|Non Applicable|Non Testé|CCW))*', '', text, flags=re.IGNORECASE)  # Séquences de status
+
+        # Normalisation finale des espaces et retour
+        text = re.sub(r'\s+', ' ', text)  # Compression des espaces multiples
+        return text.strip()  # Suppression espaces de début/fin
 
     def _clean_guidance_text(self, text: str) -> str:
-        """Nettoie le texte de guidance en supprimant les artefacts"""
-        # Supprimer les artefacts similaires
-        text = re.sub(r'SAQ D de PCI DSS.*?Page \d+.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'© 2006-.*?LLC.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'En Place.*?Pas en Place', '', text, flags=re.IGNORECASE)
-        # Normaliser les espaces
+        """Nettoie le texte de guidance en supprimant les artefacts
+
+        Nettoyage spécialisé pour les sections de conseils et notes d'applicabilité
+        """
+        # Application du même pipeline de nettoyage que les tests
+        text = re.sub(r'SAQ D de PCI DSS.*?Page \d+.*', '', text, flags=re.IGNORECASE)  # Headers PDF
+        text = re.sub(r'© 2006-.*?LLC.*', '', text, flags=re.IGNORECASE)  # Copyrights
+        text = re.sub(r'En Place.*?Pas en Place', '', text, flags=re.IGNORECASE)  # Status artifacts
+        # Normalisation et retour du texte guidance nettoyé
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
     def _is_valid_text_line(self, line: str, current_text: str) -> bool:
-        """Vérifie si une ligne est valide pour être ajoutée au texte principal"""
-        # Éviter les répétitions
+        """Vérifie si une ligne est valide pour être ajoutée au texte principal
+
+        Algorithme de validation pour éviter les redondances et artefacts
+        """
+        # Détection anti-redondance : éviter les répétitions exactes
         if line in current_text:
             return False
-        
-        # Éviter les lignes trop courtes ou qui semblent être des artefacts
+
+        # Filtre qualité : éliminer les lignes trop courtes (probablement des artefacts)
         if len(line) < 3:
             return False
-            
-        # Éviter les lignes qui commencent par des puces non-test
+
+        # Gestion spéciale des puces : accepter les puces non-test valides
         if line.startswith('•') and not self.is_test_line('• ' + line[1:]):
             return True
-            
-        return True
+
+        return True  # Par défaut, accepter la ligne
 
     def _should_ignore_line(self, line: str) -> bool:
-        """Détermine si une ligne doit être ignorée"""
+        """Détermine si une ligne doit être ignorée
+
+        Filtre exhaustif des contenus non pertinents (headers, footers, artefacts)
+        """
+        # Définition des patterns regex pour filtrage automatique
         ignore_patterns = [
-            r'^SAQ D de PCI DSS',
-            r'^© 2006-\d+',
-            r'^Page \d+',
-            r'^Octobre 2024',
-            r'^Exigence de PCI DSS',
-            r'^Tests Prévus',
-            r'^Réponse',
-            r'^En Place',
+            r'^SAQ D de PCI DSS',          # Headers de document
+            r'^© 2006-\d+',               # Copyrights avec années
+            r'^Page \d+',                  # Numéros de page
+            r'^Octobre 2024',              # Dates de publication
+            r'^Exigence de PCI DSS',       # Labels sections
+            r'^Tests Prévus',             # Headers de test
+            r'^Réponse',                   # Headers de réponse
+            r'^En Place',                  # Statuts de conformité
             r'^Pas en Place',
             r'^Non Applicable',
             r'^Non Testé',
-            r'^♦ Se reporter',
-            r'^\(Cocher une réponse',
-            r'^Section \d+',
-            r'^Tous Droits Réservés',
-            r'^LLC\.',
-            r'^PCI Security Standards Council',
+            r'^♦ Se reporter',           # Cross-références
+            r'^\(Cocher une réponse',      # Instructions UI
+            r'^Section \d+',               # Numérotation sections
+            r'^Tous Droits Réservés',     # Mentions légales
+            r'^LLC\.',                     # Suffixes entreprise
+            r'^PCI Security Standards Council',  # Nom organisation
         ]
         
-        line_lower = line.lower()
+        line_lower = line.lower()  # Conversion en minuscules pour optimisation
+        # Balayage de tous les patterns d'exclusion
         for pattern in ignore_patterns:
-            if re.match(pattern, line, re.IGNORECASE):
+            if re.match(pattern, line, re.IGNORECASE):  # Match insensible à la casse
                 return True
-                
-        # Ignorer les lignes très courtes qui sont probablement du bruit
+
+        # Filtre de longueur : éliminer les lignes parasites trop courtes
         if len(line.strip()) <= 2:
             return True
-            
-        return False
+
+        return False  # Par défaut, ne pas ignorer la ligne
 
     def _remove_response_artifacts(self, text: str) -> str:
-        """Supprime les artefacts de cases de réponse du questionnaire"""
-        # Supprimer toutes les variations des cases de réponse
+        """Supprime les artefacts de cases de réponse du questionnaire
+
+        Pipeline avanci de suppression des éléments UI et interactifs du formulaire
+        """
+        # Définition des patterns d'élimination des éléments interactifs
         patterns_to_remove = [
-            r'avec CCW Non Applicable Non Testé Pas.*?(?=\n|$)',
-            r'En Place\s+En Place avec CCW\s+Non Applicable\s+Non Testé\s+Pas en Place',
-            r'avec CCW\s+Non Applicable\s+Non Testé\s+Pas en Place',
-            r'En Place.*?Pas en Place.*?(?=\n|$)',
-            r'(En Place|Pas en Place|Non Applicable|Non Testé|CCW)(\s+(En Place|Pas en Place|Non Applicable|Non Testé|CCW))+',
-            r'♦\s*Se reporter.*?(?=\n|$)',
-            r'\(Cocher une réponse.*?\)',
+            r'avec CCW Non Applicable Non Testé Pas.*?(?=\n|$)',  # Fragments de tableau de statut
+            r'En Place\s+En Place avec CCW\s+Non Applicable\s+Non Testé\s+Pas en Place',  # Header complet tableau
+            r'avec CCW\s+Non Applicable\s+Non Testé\s+Pas en Place',  # Header partiel tableau
+            r'En Place.*?Pas en Place.*?(?=\n|$)',  # Range de statuts
+            r'(En Place|Pas en Place|Non Applicable|Non Testé|CCW)(\s+(En Place|Pas en Place|Non Applicable|Non Testé|CCW))+',  # Séquences multiples
+            r'♦\s*Se reporter.*?(?=\n|$)',  # Cross-références avec symboles
+            r'\(Cocher une réponse.*?\)',  # Instructions utilisateur
         ]
         
+        # Application itérative de tous les patterns de suppression
         for pattern in patterns_to_remove:
-            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
-        
-        # Normaliser les espaces
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)  # Suppression insensible casse
+
+        # Normalisation finale des espaces et retour du texte nettoyé
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
     def _finalize_requirement(self, req: Dict[str, Any]):
-        """Nettoie et finalise une exigence avant de la sauvegarder"""
-        # Extraire les tests restants du texte principal
+        """Nettoie et finalise une exigence avant de la sauvegarder
+
+        Pipeline final de nettoyage et validation avant persistance
+        """
+        # Extraction finale des tests résiduels dans le texte principal
         text_remaining = self._extract_tests_from_text_line(req['text'], req)
         req['text'] = text_remaining
-        
-        # Supprimer les artefacts de cases de réponse du texte principal
+
+        # Élimination des artefacts UI du texte principal
         req['text'] = self._remove_response_artifacts(req['text'])
-        
-        # Nettoyer le texte principal
+
+        # Normalisation finale du texte principal
         req['text'] = req['text'].strip()
-        req['text'] = re.sub(r'\s+', ' ', req['text'])  # Normaliser les espaces
+        req['text'] = re.sub(r'\s+', ' ', req['text'])  # Compression espaces
         
-        # Nettoyer les tests et supprimer les doublons
+        # Pipeline de nettoyage et déduplication des procédures de test
         cleaned_tests = []
         for test in req['tests']:
-            test_clean = self._remove_response_artifacts(test)
+            test_clean = self._remove_response_artifacts(test)  # Suppression artefacts
             test_clean = test_clean.strip()
-            test_clean = re.sub(r'\s+', ' ', test_clean)
+            test_clean = re.sub(r'\s+', ' ', test_clean)  # Normalisation espaces
+            # Filtrage qualité : longueur minimum + déduplication
             if test_clean and test_clean not in cleaned_tests and len(test_clean) > 10:
                 cleaned_tests.append(test_clean)
         req['tests'] = cleaned_tests
         
-        # Nettoyer le guidance
-        req['guidance'] = self._remove_response_artifacts(req['guidance'])
+        # Nettoyage final de la section guidance/conseils
+        req['guidance'] = self._remove_response_artifacts(req['guidance'])  # Suppression artefacts
         req['guidance'] = req['guidance'].strip()
-        req['guidance'] = re.sub(r'\s+', ' ', req['guidance'])
+        req['guidance'] = re.sub(r'\s+', ' ', req['guidance'])  # Normalisation espaces
 
     def extract_all_requirements(self) -> List[Dict[str, Any]]:
-        """Extrait toutes les exigences du PDF"""
-        print("Lecture du PDF...")
+        """Extrait toutes les exigences du PDF
+
+        Méthode principale orchestrant tout le pipeline d'extraction
+        """
+        print("Lecture du PDF...")  # Phase 1: Extraction PDF
         raw_text = self.read_pdf_content()
         if not raw_text:
             print("Échec de la lecture du PDF.")
-            return []
+            return []  # Retour vide en cas d'échec
 
-        print("Nettoyage du texte...")
+        print("Nettoyage du texte...")  # Phase 2: Pré-processing
         clean_text = self.clean_text(raw_text)
 
-        print("Parsing des exigences...")
+        print("Parsing des exigences...")  # Phase 3: Parsing structuré
         self.requirements = self.parse_requirements(clean_text)
-        return self.requirements
+        return self.requirements  # Retour des exigences extraites
 
     def print_summary(self):
-        """Affiche un résumé des exigences extraites"""
-        print(f"\nRésumé de l'extraction:")
+        """Affiche un résumé des exigences extraites
+
+        Génère des statistiques détaillées sur le processus d'extraction
+        """
+        print(f"\nRésumé de l'extraction:")  # Header du rapport
         print(f"Nombre total d'exigences extraites: {len(self.requirements)}")
         if self.requirements:
             print(f"Première exigence: {self.requirements[0]['req_num']}")
             print(f"Dernière exigence: {self.requirements[-1]['req_num']}")
-            
-            # Statistiques
-            with_tests = sum(1 for req in self.requirements if req['tests'])
-            with_guidance = sum(1 for req in self.requirements if req['guidance'])
-            total_tests = sum(len(req['tests']) for req in self.requirements)
-            
+
+            # Calculs statistiques avancés
+            with_tests = sum(1 for req in self.requirements if req['tests'])  # Exigences avec tests
+            with_guidance = sum(1 for req in self.requirements if req['guidance'])  # Exigences avec conseils
+            total_tests = sum(len(req['tests']) for req in self.requirements)  # Nombre total de tests
+
+            # Affichage des métriques de qualité
             print(f"Exigences avec tests: {with_tests}")
             print(f"Exigences avec guidance: {with_guidance}")
             print(f"Total des tests extraits: {total_tests}")
 
     def save_to_json(self, output_file: str = "pci_requirements_v5.json"):
-        """Sauvegarde les exigences au format JSON"""
-        # Trier par numéro d'exigence
+        """Sauvegarde les exigences au format JSON
+
+        Export structuré avec tri hiérarchique des exigences
+        """
+        # Fonction de tri hiérarchique par numérotation d'exigence
         def sort_key(req):
-            parts = [int(x) for x in req['req_num'].split('.')]
-            # Pad with zeros to ensure consistent sorting
+            parts = [int(x) for x in req['req_num'].split('.')]  # Découpage numérique
+            # Padding avec zéros pour tri cohérent (ex: 1.1 vs 1.10)
             while len(parts) < 4:
-                parts.append(0)
+                parts.append(0)  # Complétion avec zéros
             return parts
         
         sorted_requirements = sorted(self.requirements, key=sort_key)

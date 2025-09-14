@@ -1,0 +1,374 @@
+# DOCUMENTATION COMPLÈTE DU PROJET PCI-DSS SCANNER
+===========================================================
+
+## 📋 PRÉSENTATION GÉNÉRALE
+
+Le **PCI-DSS Scanner** est un système automatisé complet pour la surveillance et la gestion des documents de conformité PCI DSS (Payment Card Industry Data Security Standard). Ce projet combine plusieurs modules spécialisés pour offrir une solution intégrée de détection des changements, téléchargement automatique et extraction des exigences de conformité.
+
+### 🎯 Objectif Principal
+Automatiser la surveillance du site officiel PCI Security Standards Council pour détecter instantanément toute mise à jour de documents critiques et extraire automatiquement les exigences de conformité dans un format structuré.
+
+### ✨ Valeur Ajoutée
+- **Conformité Continue** : Assure une veille permanente sur les évolutions des standards
+- **Traçabilité Complète** : Historique détaillé de tous les changements détectés
+- **Multi-langue** : Support automatique de 5 langues (EN, FR, ES, DE, PT)
+- **Extraction Intelligente** : Conversion automatique des PDFs en données structurées
+- **Notifications Proactives** : Alerts automatiques par email avec rapports détaillés
+
+## 🏗️ ARCHITECTURE DU SYSTÈME
+
+### Structure Modulaire
+```
+pci_scraper/
+├── 🚀 pci_auto_scraper.py      # Orchestrateur principal
+├── 📊 pci_documents.csv        # Base de données des documents
+├── 📁 pci_change_scraper/      # Module de détection des changements
+├── 📥 pci_pdf_scraper/         # Module de téléchargement PDF
+├── 🔍 pci_pdf_extractor/       # Module d'extraction des exigences
+├── 💾 downloads/               # Stockage des documents téléchargés
+├── ⚙️ requirements.txt         # Dépendances Python
+├── 🎬 run.sh                   # Script de lancement
+└── 📖 README.md               # Documentation de base
+```
+
+### Flux de Données
+1. **Détection** → Analyse des changements sur le site officiel
+2. **Filtrage** → Identification des documents modifiés/nouveaux
+3. **Téléchargement** → Récupération sélective des PDFs
+4. **Extraction** → Conversion en format CSV structuré
+5. **Notification** → Envoi automatique de rapports par email
+
+## 🔧 COMPOSANTS DÉTAILLÉS
+
+### 1. Orchestrateur Principal (pci_auto_scraper.py)
+
+**Rôle** : Coordinateur central qui pilote l'ensemble du processus
+**Fonctionnalités clés** :
+- ✅ Gestion du workflow complet (détection → téléchargement → extraction)
+- ✅ Coordination entre les différents modules
+- ✅ Gestion des sessions de scraping horodatées
+- ✅ Statistiques et rapports de performance
+- ✅ Envoi automatique d'emails récapitulatifs HTML
+- ✅ Système de fallback en cas d'échec partiel
+- ✅ Matching précis des documents par nom/version/catégorie
+
+**Configuration** :
+- Mode headless/interface pour les navigateurs
+- Répertoires personnalisables de téléchargement
+- API Keys pour les services tiers (Resend pour emails)
+- Filtrage intelligent des documents à traiter
+
+### 2. Détecteur de Changements (pci_change_scraper/)
+
+**Fichier principal** : `pci_scraper.py`
+**Responsabilité** : Surveillance continue des modifications sur le site PCI Security Standards Council
+
+**Fonctionnalités** :
+- 🔍 **Scraping Intelligent** : Utilise Selenium WebDriver pour gérer le contenu dynamique
+- 📊 **Analyse Comparative** : Compare les versions actuelles avec l'historique local
+- 🏷️ **Catégorisation Automatique** : Classifie automatiquement les documents (PCI DSS, SAQ, AOC, etc.)
+- 💾 **Persistance des Données** : Sauvegarde en CSV avec horodatage
+- 🔄 **Détection Multi-critères** : Analyse des changements de version, nom, URL
+- ⚡ **Performance Optimisée** : Traitement batch et parallélisation
+
+**Technologies utilisées** :
+- Selenium WebDriver (Chrome) avec gestion automatique des drivers
+- Pandas pour la manipulation de données tabulaires
+- WebDriverWait pour la gestion robuste des timeouts
+
+### 3. Téléchargeur PDF (pci_pdf_scraper/)
+
+**Fichier principal** : `pci_pdf_scraper.py`
+**Mission** : Téléchargement sélectif et intelligent des documents PDF
+
+**Capacités avancées** :
+- 🛡️ **Contournement Anti-Bot** : Utilise selenium-stealth et rotation d'user-agents
+- 📋 **Téléchargement Sélectif** : Ne télécharge que les documents modifiés
+- 🌐 **Gestion des Langues** : Détection automatique et téléchargement multi-langue
+- 🔄 **Retry Logic** : Mécanismes de récupération en cas d'échec
+- 📁 **Organisation Automatique** : Classement par session avec horodatage
+
+**Techniques de bypass** :
+- Headers HTTP rotatifs et randomisés
+- Délais variables entre requêtes
+- Simulation de comportement humain
+- Gestion des cookies et sessions
+
+### 4. Extracteur d'Exigences (pci_pdf_extractor/)
+
+**Fichiers spécialisés** :
+- `testv5.py` : Extracteur français (FR)
+- `testv5_EN.py` : Extracteur anglais (EN)
+- `testv5_ES.py` : Extracteur espagnol (ES)
+- `testv5_DE.py` : Extracteur allemand (DE)
+- `testv5_PT.py` : Extracteur portugais (PT)
+
+**Intelligence d'extraction** :
+- 🧠 **Reconnaissance de Patterns** : Détection automatique des structures d'exigences
+- 📄 **Analyse Sémantique** : Identification des sections (exigences, tests, conseils)
+- 🏗️ **Structure Hiérarchique** : Préservation de l'arborescence des exigences (1.1.1, 1.1.2, etc.)
+- 🌐 **Adaptation Linguistique** : Marqueurs et patterns spécifiques à chaque langue
+- 📊 **Format Standardisé** : Export CSV uniforme malgré les différences linguistiques
+
+**Processus d'extraction** :
+1. **Détection des Pages** : Identification automatique des zones contenant les exigences
+2. **Segmentation** : Découpage du contenu par sections logiques
+3. **Classification** : Distinction entre exigences, tests et conseils
+4. **Structuration** : Organisation hiérarchique et numérotation
+5. **Export** : Génération de fichiers CSV avec métadonnées
+
+## ⚡ FONCTIONNALITÉS AVANCÉES
+
+### Système de Matching Précis
+- **Correspondance Exacte** : Algorithmes de matching nom/version/catégorie
+- **Gestion des Variantes** : Prise en compte des différences de nommage
+- **Validation Croisée** : Vérification multi-critères avant téléchargement
+
+### Gestion Multi-Session
+- **Sessions Horodatées** : Chaque exécution génère un dossier unique
+- **Archivage Automatique** : Conservation de l'historique complet
+- **Traçabilité** : Logs détaillés de chaque opération
+
+### Notifications Intelligentes
+- **Emails HTML** : Rapports visuels avec design moderne
+- **Pièces Jointes Automatiques** : CSV générés attachés aux emails
+- **Indicateurs de Statut** : Codes couleur pour success/warning/error
+- **Statistiques Détaillées** : Métriques de performance et résultats
+
+### Support Multi-langue Avancé
+- **Détection Automatique** : Reconnaissance de la langue basée sur le nom du fichier
+- **Extracteurs Spécialisés** : Moteurs d'extraction optimisés par langue
+- **Patterns Linguistiques** : Marqueurs adaptés à chaque langue
+- **Uniformisation** : Format de sortie standardisé malgré les différences
+
+## 🎮 UTILISATION PRATIQUE
+
+### Installation Complète
+```bash
+# 1. Cloner le projet
+git clone https://github.com/Thomas9824/PCI-DSS_Scanner.git
+cd PCI-DSS_Scanner
+
+# 2. Créer l'environnement virtuel
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou venv\Scripts\activate  # Windows
+
+# 3. Installer les dépendances
+pip install -r requirements.txt
+
+# 4. Configuration des variables d'environnement
+cp .env.example .env
+# Éditer .env avec vos clés API
+```
+
+### Configuration Environnement (.env)
+```bash
+RESEND_API_KEY=your_resend_api_key_here
+EMAIL_RECIPIENT=your-email@example.com
+```
+
+### Modes d'Exécution
+
+**Exécution Automatique** :
+```bash
+python pci_auto_scraper.py
+```
+
+**Avec le script de lancement** :
+```bash
+chmod +x run.sh
+./run.sh
+```
+
+**Exécution programmée (cron)** :
+```bash
+# Exécution quotidienne à 9h00
+0 9 * * * /path/to/project/run.sh
+```
+
+## 📊 TYPES DE DOCUMENTS SUPPORTÉS
+
+### Documents PCI DSS Core
+- **PCI DSS v4.0.1** : Standard principal avec toutes ses versions linguistiques
+- **Summary of Changes** : Résumés des modifications entre versions
+- **Quick Reference Guide** : Guides de référence rapide
+- **Prioritized Approach** : Méthodologies d'approche prioritaire
+
+### Self-Assessment Questionnaires (SAQ)
+- **SAQ A** : Commerçants card-not-present (e-commerce)
+- **SAQ A-EP** : Commerçants e-commerce avec redirection
+- **SAQ B** : Commerçants avec terminaux d'impression/dip
+- **SAQ B-IP** : Commerçants avec terminaux IP
+- **SAQ C** : Commerçants avec systèmes d'application de paiement
+- **SAQ C-VT** : Commerçants avec terminaux virtuels web
+- **SAQ D Merchant** : Tous autres commerçants
+- **SAQ D Service Provider** : Prestataires de services
+- **SAQ P2PE** : Commerçants utilisant des solutions P2PE validées
+- **SAQ SPOC** : Organisations avec Contact Point de Service
+
+### Attestations of Compliance (AOC)
+- AOCs correspondant à chaque type de SAQ
+- Templates et formulaires officiels
+
+### Documents Techniques
+- **ASV Resource Guide** : Guides pour les fournisseurs de scanning
+- **ROC Templates** : Modèles de rapport de conformité
+- **Vulnerability Management** : Guides de gestion des vulnérabilités
+
+## 🌍 SUPPORT LINGUISTIQUE DÉTAILLÉ
+
+### Langues Supportées
+- 🇬🇧 **Anglais (EN)** : Langue de référence, extraction complète
+- 🇫🇷 **Français (FR)** : Support complet avec patterns francophones
+- 🇪🇸 **Espagnol (ES)** : Adaptation aux spécificités hispaniques
+- 🇩🇪 **Allemand (DE)** : Gestion des structures germaniques
+- 🇵🇹 **Portugais (PT)** : Support des variantes BR et PT
+
+### Mécanisme de Détection
+```python
+# Exemples de patterns de détection
+language_indicators = {
+    'EN': ['_en.pdf', 'english', '-en-'],
+    'FR': ['_fr.pdf', 'francais', 'merchant-fr'],
+    'ES': ['_es.pdf', 'espanol', 'merchant-es'],
+    'DE': ['_de.pdf', 'deutsch', 'merchant-de'],
+    'PT': ['_pt.pdf', 'portugues', 'merchant-pt']
+}
+```
+
+## 📈 SYSTÈME DE MONITORING ET STATISTIQUES
+
+### Métriques Collectées
+- **documents_checked** : Nombre total de documents analysés
+- **changes_detected** : Changements identifiés (nouveaux + mis à jour)
+- **downloads_attempted** : Tentatives de téléchargement
+- **downloads_successful** : Téléchargements réussis
+- **extracted_files** : Fichiers CSV générés
+- **execution_time** : Temps d'exécution total
+
+### Rapports Automatiques
+- **Logs Console** : Affichage temps réel du processus
+- **Emails HTML** : Rapports visuels avec design moderne
+- **Historique CSV** : Traçabilité complète des documents
+
+## 🔒 SÉCURITÉ ET BONNES PRATIQUES
+
+### Gestion des Credentials
+- Variables d'environnement pour les API keys
+- Fichiers .env exclus du versioning
+- Pas de hardcoding de credentials dans le code
+
+### Anti-Detection
+- Rotation d'user-agents
+- Délais randomisés entre requêtes
+- Headers HTTP réalistes
+- Utilisation de selenium-stealth
+
+### Gestion des Erreurs
+- Try/catch complets sur toutes les opérations critiques
+- Fallback automatique en cas d'échec partiel
+- Logs détaillés pour le debugging
+- Validation des données avant traitement
+
+## ⚙️ DÉPENDANCES TECHNIQUES
+
+### Dépendances Python Core
+```
+selenium==4.35.0              # WebDriver pour l'automatisation
+webdriver-manager==4.0.2      # Gestion automatique des drivers
+pandas==2.3.2                 # Manipulation de données
+beautifulsoup4==4.13.5        # Parsing HTML
+requests==2.32.5              # Requêtes HTTP
+PyPDF2==3.0.1                 # Extraction PDF
+```
+
+### Dépendances Spécialisées
+```
+selenium-stealth==1.0.6       # Contournement anti-bot
+resend                         # Service d'email transactionnel
+python-dotenv==1.1.1          # Gestion variables d'environnement
+lxml==6.0.1                   # Parser XML/HTML performant
+```
+
+### Prérequis Système
+- **Python 3.7+** : Version minimum supportée
+- **Chrome/Chromium** : Pour Selenium WebDriver
+- **Accès Internet** : Pour le scraping et l'envoi d'emails
+- **Espace Disque** : ~100MB pour les PDFs et l'historique
+
+## 🚀 OPTIMISATIONS ET PERFORMANCES
+
+### Stratégies d'Optimisation
+- **Téléchargement Sélectif** : Seuls les documents modifiés sont téléchargés
+- **Traitement Parallèle** : Extraction simultanée de plusieurs langues
+- **Cache Intelligent** : Évite le re-téléchargement de documents identiques
+- **Sessions Persistantes** : Réutilisation des connexions HTTP
+
+### Gestion Mémoire
+- Traitement des PDFs par chunks
+- Nettoyage automatique des objets Selenium
+- Gestion des grandes collections de données
+
+## 🔧 MAINTENANCE ET ÉVOLUTION
+
+### Monitoring Proactif
+- Logs détaillés pour identifier les problèmes
+- Alertes automatiques en cas d'échec
+- Statistiques de performance pour optimisation
+
+### Évolutivité
+- Architecture modulaire pour ajouts faciles
+- Support nouveaux formats de documents
+- Extension possible à d'autres sites de conformité
+- API potentielle pour intégration externe
+
+### Maintenance Préventive
+- Mise à jour régulière des dépendances
+- Tests de régression sur les patterns d'extraction
+- Vérification périodique des sélecteurs CSS/XPath
+
+## 🎯 CAS D'USAGE TYPIQUES
+
+### Organisations de Conformité
+- Surveillance automatique des évolutions réglementaires
+- Mise à jour proactive des politiques internes
+- Génération de rapports de conformité
+
+### Consultants en Sécurité
+- Veille technologique automatisée
+- Préparation de documentation client
+- Analyse comparative des versions
+
+### Départements IT
+- Intégration dans les processus de gouvernance
+- Automatisation des audits de conformité
+- Mise à jour des procédures techniques
+
+## 🎉 RÉSUMÉ DES BÉNÉFICES
+
+### Gain de Temps
+- **Automatisation Complète** : Plus de surveillance manuelle
+- **Traitement Batch** : Gestion simultanée de dizaines de documents
+- **Format Prêt à l'Emploi** : CSV directement exploitables
+
+### Fiabilité
+- **Détection Exhaustive** : Aucun changement n'échappe au système
+- **Multi-critères** : Validation croisée des modifications
+- **Historique Complet** : Traçabilité totale des évolutions
+
+### Flexibilité
+- **Multi-langue** : Support de 5 langues principales
+- **Configurable** : Adaptation aux besoins spécifiques
+- **Extensible** : Architecture modulaire pour évolutions futures
+
+---
+
+**📞 Support et Contributions**
+Ce projet est maintenu activement. Pour signaler des bugs, proposer des améliorations ou contribuer au code, utilisez les issues GitHub du projet.
+
+**⚖️ Conformité Légale**
+Ce système respecte les robots.txt et conditions d'utilisation des sites web ciblés. Il est conçu pour un usage de conformité et éducationnel uniquement.
+
+**🏆 Qualité du Code**
+Le code suit les bonnes pratiques Python avec documentation complète, gestion d'erreurs robuste et tests de validation.
