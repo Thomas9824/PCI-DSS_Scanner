@@ -1,111 +1,126 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scraper pour extraire les documents PCI DSS et SAQ depuis le site PCI Security Standards
-Utilise Selenium pour gérer le contenu chargé dynamiquement
+Module de détection de changements PCI DSS/SAQ via scraping Selenium
+Scraper intelligent pour extraire et comparer les documents du site PCI Security Standards
+Architecture : Web Scraping -> Language Detection -> Version Comparison -> Change Detection
 """
 
-import time
-import csv
-import logging
-import os
-import glob
-import shutil
-from datetime import datetime
-from typing import List, Dict, Tuple, Optional, Set
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait, Select
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
-import pandas as pd
+import time  # Gestion des délais et temporisation pour le scraping
+import csv  # Export des données en format CSV (legacy)
+import logging  # Système de logging pour traçabilité des opérations
+import os  # Manipulation des fichiers et chemins système
+import glob  # Recherche de fichiers par patterns (pour comparaisons)
+import shutil  # Opérations de copie et backup des fichiers
+from datetime import datetime  # Timestamps pour versioning et horodatage
+from typing import List, Dict, Tuple, Optional, Set  # Annotations de types pour la robustesse du code
+from selenium import webdriver  # Driver principal pour automatisation web
+from selenium.webdriver.common.by import By  # Sélecteurs d'éléments DOM
+from selenium.webdriver.support.ui import WebDriverWait, Select  # Attente et manipulation des dropdowns
+from selenium.webdriver.support import expected_conditions as EC  # Conditions d'attente Selenium
+from selenium.webdriver.chrome.service import Service  # Service Chrome pour Selenium
+from selenium.webdriver.chrome.options import Options  # Configuration Chrome (headless, etc.)
+from selenium.common.exceptions import TimeoutException, NoSuchElementException  # Gestion des erreurs Selenium
+from webdriver_manager.chrome import ChromeDriverManager  # Gestion automatique du driver Chrome
+import pandas as pd  # Manipulation avancée des données et comparaisons
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class PCIDocumentScraper:
-    """Scraper pour extraire les documents PCI DSS et SAQ"""
-    
+    """
+    Scraper intelligent pour la détection de changements PCI DSS/SAQ
+    Combine scraping Selenium, détection de langues et comparaison de versions
+    """
+
     def __init__(self, headless: bool = False):
         """
-        Initialise le scraper
-        
+        Initialise le scraper avec configuration personnalisable
+
         Args:
-            headless: Si True, exécute Chrome en mode headless
+            headless: Mode headless pour automation (True) ou debug visuel (False)
         """
-        self.url = "https://www.pcisecuritystandards.org/document_library/"
-        self.driver = None
-        self.wait = None
-        self.headless = headless
-        self.documents = []
+        self.url = "https://www.pcisecuritystandards.org/document_library/"  # URL cible du site officiel PCI
+        self.driver = None  # Instance du driver Selenium (lazy loading)
+        self.wait = None   # WebDriverWait pour les attentes conditionnelles
+        self.headless = headless  # Mode d'exécution du navigateur
+        self.documents = []  # Cache des documents extraits
         
     def setup_driver(self):
-        """Configure et initialise le driver Selenium"""
+        """Configuration avancée du driver Chrome avec options anti-détection"""
         try:
             chrome_options = Options()
+
+            # Configuration de base selon le mode
             if self.headless:
                 chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--window-size=1920,1080")
+
+            # Options d'optimisation et de stabilité
+            chrome_options.add_argument("--no-sandbox")  # Contourne les restrictions de sandbox
+            chrome_options.add_argument("--disable-dev-shm-usage")  # Évite les problèmes de mémoire partagée
+            chrome_options.add_argument("--disable-gpu")  # Désactive le GPU pour la stabilité
+            chrome_options.add_argument("--window-size=1920,1080")  # Résolution standard pour cohérence
+
+            # User-Agent réaliste pour éviter la détection de bot
             chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            
-            # Utilise webdriver-manager pour gérer automatiquement ChromeDriver
+
+            # Gestion automatique du driver avec webdriver-manager
             service = Service(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
+
+            # Configuration des timeouts avec attente généreuse pour le contenu dynamique
             self.wait = WebDriverWait(self.driver, 20)
-            
+
             logger.info("Driver Selenium configuré avec succès")
-            
+
         except Exception as e:
             logger.error(f"Erreur lors de la configuration du driver: {e}")
             raise
     
     def wait_for_page_load(self):
-        """Attend que la page soit complètement chargée"""
+        """Stratégie d'attente intelligente pour le contenu dynamique JavaScript"""
         try:
-            # Attend que le conteneur principal soit présent
+            # Attente de l'élément clé indiquant que les documents sont chargés
             self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, "document_name")))
-            time.sleep(3)  # Temps supplémentaire pour le chargement dynamique
+
+            # Délai supplémentaire pour stabiliser le contenu AJAX/JavaScript
+            time.sleep(3)  # Buffer pour les requêtes asynchrones tardives
+
             logger.info("Page chargée avec succès")
         except TimeoutException:
             logger.warning("Timeout lors du chargement de la page")
     
     def select_filter(self, filter_value: str) -> bool:
         """
-        Sélectionne un filtre spécifique (PCI DSS ou SAQ)
-        
+        Système de filtrage intelligent avec validation d'état
+
         Args:
-            filter_value: La valeur du filtre à sélectionner ("PCI DSS" ou "SAQ")
-            
+            filter_value: Catégorie à filtrer ("PCI DSS", "SAQ", etc.)
+
         Returns:
-            bool: True si la sélection a réussi, False sinon
+            bool: True si filtrage réussi et validé, False en cas d'échec
         """
         try:
             logger.info(f"Sélection du filtre: {filter_value}")
-            
-            # Utilise le select natif (méthode la plus fiable)
+
+            # Localisation du dropdown natif HTML (plus fiable que JS)
             native_select_element = self.driver.find_element(By.CSS_SELECTOR, "#document_category")
             select = Select(native_select_element)
-            
-            # Vérifie si le filtre est déjà sélectionné
+
+            # Optimisation : vérification de l'état actuel avant modification
             current_option = select.first_selected_option.text.strip()
             if current_option == filter_value:
                 logger.info(f"Le filtre {filter_value} est déjà sélectionné")
                 return True
-            
-            # Sélectionne la nouvelle option
+
+            # Application du nouveau filtre
             select.select_by_visible_text(filter_value)
-            
-            # Attend que le filtre soit appliqué
+
+            # Attente pour le rendu AJAX du contenu filtré
             time.sleep(5)
-            
-            # Vérifie que le filtre a été appliqué
+
+            # Validation post-sélection de l'état du filtre
             new_option = select.first_selected_option.text.strip()
             if new_option == filter_value:
                 logger.info(f"Filtre {filter_value} appliqué avec succès")
@@ -120,72 +135,73 @@ class PCIDocumentScraper:
     
     def extract_documents(self, category: str) -> List[Dict[str, str]]:
         """
-        Extrait les documents pour une catégorie donnée avec détection des langues
-        
+        Extracteur intelligent de documents avec détection multilingue automatique
+
         Args:
-            category: La catégorie des documents ("PCI DSS", "SAQ", etc.)
-            
+            category: Catégorie de documents à extraire ("PCI DSS", "SAQ", etc.)
+
         Returns:
-            List[Dict]: Liste des documents avec leurs informations
+            List[Dict]: Documents enrichis avec métadonnées (nom, version, catégorie, langues)
         """
         documents = []
         
         try:
             logger.info(f"Extraction des documents pour la catégorie: {category}")
-            
-            # Attend que les documents soient chargés
+
+            # Stabilisation après filtrage pour laisser le DOM se reconstruire
             time.sleep(3)
-            
-            # Trouve les documents, versions et langues par paires
+
+            # Localisation des éléments DOM par sélecteurs CSS spécialisés
             document_elements = self.driver.find_elements(By.CSS_SELECTOR, "span.document_name")
             version_elements = self.driver.find_elements(By.CSS_SELECTOR, "div[id*='version_select_']")
-            
+
             logger.info(f"Trouvé {len(document_elements)} documents et {len(version_elements)} versions")
-            
-            # Assure-toi qu'il y a le même nombre d'éléments
+
+            # Synchronisation des arrays pour éviter les index out of bounds
             min_count = min(len(document_elements), len(version_elements))
             
+            # Boucle d'extraction principale avec enrichissement des métadonnées
             for i in range(min_count):
                 try:
+                    # Extraction des données de base
                     document_name = document_elements[i].text.strip()
                     version = version_elements[i].text.strip()
-                    
+
                     if not document_name:
                         continue
-                    
-                    # Détecte les langues disponibles pour ce document
-                    available_languages = self.detect_available_languages(i)
-                    
-                    # Détermine la sous-catégorie précise (SAQ vs SAQ AOC)
-                    precise_category = self.determine_precise_category(document_name, category)
-                    
-                    # Ajoute le document à la liste
+
+                    # Pipeline d'enrichissement automatique
+                    available_languages = self.detect_available_languages(i)  # Détection multilingue
+                    precise_category = self.determine_precise_category(document_name, category)  # Catégorisation fine
+
+                    # Construction de l'objet document avec métadonnées complètes
                     document_info = {
                         'name': document_name,
                         'version': version if version else "N/A",
                         'category': precise_category,
                         'available_languages': available_languages
                     }
-                    
+
                     documents.append(document_info)
                     logger.debug(f"Document extrait: {document_name} - Version: {version} - Catégorie: {precise_category} - Langues: {available_languages}")
-                    
+
                 except Exception as e:
                     logger.warning(f"Erreur lors de l'extraction du document {i}: {e}")
                     continue
             
-            # Si il y a plus de documents que de versions, traite les documents restants
+            # Gestion des documents orphelins (sans version associée)
             if len(document_elements) > len(version_elements):
                 for i in range(len(version_elements), len(document_elements)):
                     try:
                         document_name = document_elements[i].text.strip()
                         if document_name:
+                            # Traitement des documents sans métadonnées de version
                             available_languages = self.detect_available_languages(i)
                             precise_category = self.determine_precise_category(document_name, category)
-                            
+
                             document_info = {
                                 'name': document_name,
-                                'version': "N/A",
+                                'version': "N/A",  # Version inconnue/non disponible
                                 'category': precise_category,
                                 'available_languages': available_languages
                             }
@@ -204,27 +220,28 @@ class PCIDocumentScraper:
     
     def detect_available_languages(self, document_index: int) -> str:
         """
-        Détecte les langues disponibles pour un document donné via les dropdowns de langue
-        
+        Détecteur automatique de langues via analyse des dropdowns de sélection
+
         Args:
-            document_index: Index du document dans la liste
-            
+            document_index: Position du document dans le DOM (0-indexé)
+
         Returns:
-            str: Liste des langues disponibles séparées par des virgules
+            str: Codes de langues disponibles séparés par virgules (ex: "EN, FR, ES")
         """
         try:
-            # Trouve le dropdown de langue associé à ce document
+            # Localisation des dropdowns de langues par attribut spécialisé
             language_selects = self.driver.find_elements(By.CSS_SELECTOR, "select[data-doc_idx]")
-            
+
             if document_index < len(language_selects):
                 select_element = language_selects[document_index]
                 select = Select(select_element)
-                
+
+                # Algorithme de parsing des options de langue
                 languages = []
                 for option in select.options:
                     option_text = option.text.strip()
                     if "PDF" in option_text:
-                        # Extrait le nom de la langue
+                        # Mapping des textes vers codes ISO de langues
                         if "English PDF" in option_text:
                             languages.append("EN")
                         elif "French PDF" in option_text:
@@ -239,18 +256,19 @@ class PCIDocumentScraper:
                             languages.append("PT")
                         elif "Spanish PDF" in option_text:
                             languages.append("ES")
-                
+
                 return ", ".join(languages) if languages else "EN"
             else:
-                # Fallback: cherche n'importe quel select près du document
+                # Stratégie de fallback : recherche par proximité DOM
                 try:
                     document_elements = self.driver.find_elements(By.CSS_SELECTOR, "span.document_name")
                     if document_index < len(document_elements):
-                        # Cherche un select dans le même conteneur parent
+                        # Navigation dans l'arbre DOM : recherche du select parent
                         parent = document_elements[document_index].find_element(By.XPATH, "../..")
                         select_element = parent.find_element(By.CSS_SELECTOR, "select")
                         select = Select(select_element)
-                        
+
+                        # Parsing minimal pour le fallback
                         languages = []
                         for option in select.options:
                             option_text = option.text.strip()
@@ -258,13 +276,13 @@ class PCIDocumentScraper:
                                 languages.append("EN")
                             elif "French PDF" in option_text:
                                 languages.append("FR")
-                            # Ajoutez d'autres langues selon vos besoins
-                        
+                            # Extension possible pour autres langues
+
                         return ", ".join(languages) if languages else "EN"
                 except:
                     pass
-                
-                return "EN"  # Défaut à anglais si pas de dropdown trouvé
+
+                return "EN"  # Fallback ultime : anglais par défaut
                 
         except Exception as e:
             logger.debug(f"Impossible de détecter les langues pour le document {document_index}: {e}")
@@ -319,56 +337,57 @@ class PCIDocumentScraper:
     
     def scrape_all_documents(self) -> List[Dict[str, str]]:
         """
-        Scrape tous les documents pour toutes les catégories disponibles (PCI DSS, SAQ, AOC, etc.)
-        
+        Orchestrateur principal du scraping multi-catégories avec détection automatique
+
         Returns:
-            List[Dict]: Liste de tous les documents extraits
+            List[Dict]: Collection complète des documents PCI DSS/SAQ avec métadonnées enrichies
         """
         all_documents = []
         
         try:
             logger.info("Début du scraping de tous les documents")
-            
-            # Charge la page
+
+            # Initialisation : chargement de la page cible
             self.driver.get(self.url)
             self.wait_for_page_load()
-            
-            # Détecte automatiquement toutes les catégories disponibles
+
+            # Découverte automatique des catégories disponibles
             categories = self.get_available_categories()
-            
-            # Filtre pour ne garder que les catégories pertinentes
+
+            # Filtrage intelligent des catégories pertinentes PCI DSS/SAQ
             target_categories = []
             for category in categories:
                 category_lower = category.lower()
                 if any(keyword in category_lower for keyword in ['pci', 'dss', 'saq', 'aoc', 'attestation']):
                     target_categories.append(category)
-            
+
+            # Stratégie de fallback avec catégories prédéfinies
             if not target_categories:
-                # Fallback vers les catégories connues
                 target_categories = ["PCI DSS", "SAQ"]
                 logger.warning("Aucune catégorie pertinente détectée, utilisation des catégories par défaut")
             
             logger.info(f"Catégories cibles à traiter: {target_categories}")
-            
+
+            # Boucle de traitement séquentiel par catégorie
             for category in target_categories:
                 logger.info(f"Traitement de la catégorie: {category}")
-                
-                # Sélectionne le filtre
+
+                # Pipeline par catégorie : Filtrage -> Extraction -> Agrégation
                 if self.select_filter(category):
-                    # Extrait les documents
                     documents = self.extract_documents(category)
                     all_documents.extend(documents)
-                    
+
                     logger.info(f"Documents extraits pour {category}: {len(documents)}")
                 else:
                     logger.error(f"Impossible de sélectionner le filtre pour {category}")
-                
-                # Pause entre les catégories
+
+                # Délai inter-catégories pour éviter la surcharge du serveur
                 time.sleep(3)
             
+            # Mise en cache et finalisation
             self.documents = all_documents
             logger.info(f"Scraping terminé: {len(all_documents)} documents au total")
-            
+
             return all_documents
             
         except Exception as e:
@@ -400,31 +419,33 @@ class PCIDocumentScraper:
     
     def compare_versions(self, previous_data: Optional[pd.DataFrame]) -> Dict[str, List[Dict[str, str]]]:
         """
-        Compare les données actuelles avec les données précédentes
-        
+        Moteur de comparaison avancé pour détection de changements multi-critères
+
         Args:
-            previous_data: DataFrame des données précédentes
-            
+            previous_data: Dataset de référence (DataFrame pandas)
+
         Returns:
-            Dictionnaire avec les changements détectés
+            Dict structuré : 'new_documents', 'updated_versions', 'removed_documents', 'unchanged_documents'
         """
+        # Structure des changements avec classification granulaire
         changes = {
             'new_documents': [],
             'updated_versions': [],
             'removed_documents': [],
             'unchanged_documents': []
         }
-        
+
+        # Cas spécial : première exécution (pas de données de référence)
         if previous_data is None:
             logger.info("Première exécution - tous les documents sont nouveaux")
             changes['new_documents'] = self.documents.copy()
             return changes
-        
+
         try:
-            # Convertit les données actuelles en DataFrame pour faciliter la comparaison
+            # Conversion des structures pour optimiser les comparaisons
             current_df = pd.DataFrame(self.documents)
-            
-            # Crée des dictionnaires pour faciliter la comparaison
+
+            # Création d'index composites pour matching précis (nom + catégorie)
             previous_dict = {}
             for _, row in previous_data.iterrows():
                 key = f"{row['name']}_{row['category']}"
@@ -434,7 +455,7 @@ class PCIDocumentScraper:
                     'category': row['category'],
                     'available_languages': row.get('available_languages', 'EN')
                 }
-            
+
             current_dict = {}
             for doc in self.documents:
                 key = f"{doc['name']}_{doc['category']}"
@@ -653,7 +674,7 @@ class PCIDocumentScraper:
             logger.info("Driver fermé")
 
 def main():
-    """Fonction principale avec comparaison des versions"""
+    """Point d'entrée principal : orchestration complète du pipeline de détection de changements"""
     scraper = None
     
     try:
