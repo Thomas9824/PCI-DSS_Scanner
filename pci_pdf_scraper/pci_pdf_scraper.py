@@ -1,272 +1,315 @@
 #!/usr/bin/env python3
 """
 PCI Security Standards Document Scraper - Enhanced Version
-Downloads only SAQ and PCI DSS PDFs with improved 403 bypass techniques
+
+Module spécialisé de téléchargement sélectif avec techniques anti-détection avancées.
+Conçu pour contourner les protections 403 et télécharger uniquement les documents
+SAQ (Self-Assessment Questionnaire) et PCI DSS avec support multi-langue.
+
+Architecture:
+- Selenium WebDriver avec selenium-stealth pour contournement anti-bot
+- Rotation dynamique d'user-agents et headers HTTP réalistes
+- Support des dropdowns de langue pour téléchargement multi-variantes
+- Pipeline de retry avec backoff exponentiel pour robustesse
 """
 
-import os
-import time
-import requests
-from urllib.parse import urljoin, urlparse
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select
-from selenium_stealth import stealth
-from bs4 import BeautifulSoup
-import logging
-import random
+import os  # Manipulation système de fichiers et chemins
+import time  # Gestion des délais et temporisation anti-détection
+import requests  # Client HTTP pour téléchargements avec cookies/sessions
+from urllib.parse import urljoin, urlparse  # Parsing et construction d'URLs
+from selenium import webdriver  # Automatisation navigateur pour contournement JavaScript
+from selenium.webdriver.chrome.options import Options  # Configuration avancée Chrome
+from selenium.webdriver.common.by import By  # Sélecteurs d'éléments DOM
+from selenium.webdriver.support.ui import WebDriverWait  # Attentes conditionnelles
+from selenium.webdriver.support import expected_conditions as EC  # Conditions d'attente prédéfinies
+from selenium.webdriver.support.ui import Select  # Interaction avec dropdowns HTML
+from selenium_stealth import stealth  # Bibliothèque anti-détection WebDriver
+from bs4 import BeautifulSoup  # Parser HTML pour extraction de liens
+import logging  # Système de logging structuré pour debugging
+import random  # Génération de valeurs aléatoires pour randomisation
 
-# Configure logging
+# Configuration du système de logging avec format timestamp
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  # Logger spécifique au module
 
 class PCIScraperEnhanced:
+    """Scraper avancé pour documents PCI DSS avec techniques anti-détection
+
+    Classe principale orchestrant le téléchargement sélectif de documents SAQ/PCI DSS
+    avec contournement des protections web et support multi-langue automatique.
+    """
     def __init__(self, download_dir="downloads"):
-        self.download_dir = download_dir
-        self.base_url = "https://www.pcisecuritystandards.org/document_library/"
-        self.session = requests.Session()
-        self.driver = None
+        """Initialisation avec configuration anti-détection et filtrage de catégories"""
+        self.download_dir = download_dir  # Répertoire de destination des téléchargements
+        self.base_url = "https://www.pcisecuritystandards.org/document_library/"  # URL cible officielle
+        self.session = requests.Session()  # Session HTTP persistante pour cookies/auth
+        self.driver = None  # Instance WebDriver (sera initialisée plus tard)
         
-        # Define the categories we want to download (SAQ and PCI DSS only)
+        # Définition des catégories cibles pour filtrage sélectif
+        # Limite le téléchargement aux documents essentiels de conformité
         self.target_categories = [
-            'SAQ',
-            'PCI DSS',
-            'Self-Assessment Questionnaire',
-            'Data Security Standard'
+            'SAQ',                        # Self-Assessment Questionnaires
+            'PCI DSS',                    # Data Security Standard principal
+            'Self-Assessment Questionnaire',  # Variant de nommage
+            'Data Security Standard'      # Variant de nommage
         ]
         
-        # Create download directory
-        os.makedirs(self.download_dir, exist_ok=True)
+        # Création automatique du répertoire de téléchargement
+        os.makedirs(self.download_dir, exist_ok=True)  # exist_ok évite les erreurs si existe déjà
         
-        # Enhanced headers rotation
+        # Pool d'user-agents réalistes pour rotation anti-détection
+        # Contient des signatures de navigateurs légitimes récents
         self.user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',  # Chrome Windows
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',  # Chrome Windows legacy
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',  # Chrome macOS
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'  # Chrome Linux
         ]
         
-        # Setup requests session with enhanced headers
-        self.update_session_headers()
+        # Initialisation de la session avec headers rotatifs
+        self.update_session_headers()  # Premier setup des headers HTTP
 
     def update_session_headers(self):
-        """Update session headers with random user agent"""
+        """Mise à jour des headers HTTP avec rotation aléatoire d'user-agent
+
+        Simule un navigateur réel avec headers complets pour éviter la détection
+        """
+        # Configuration complète des headers HTTP pour simulation navigateur réel
         self.session.headers.update({
-            'User-Agent': random.choice(self.user_agents),
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Cache-Control': 'max-age=0'
+            'User-Agent': random.choice(self.user_agents),  # User-Agent rotatif aléatoire
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',  # Types de contenu acceptés
+            'Accept-Language': 'en-US,en;q=0.9',  # Préférences linguistiques
+            'Accept-Encoding': 'gzip, deflate, br',  # Méthodes de compression supportées
+            'DNT': '1',  # Do Not Track pour confidentialité
+            'Connection': 'keep-alive',  # Connexion persistante
+            'Upgrade-Insecure-Requests': '1',  # Préférence HTTPS
+            'Sec-Fetch-Dest': 'document',  # Contexte de requête sécurisée
+            'Sec-Fetch-Mode': 'navigate',  # Mode de navigation
+            'Sec-Fetch-Site': 'same-origin',  # Politique d'origine
+            'Cache-Control': 'max-age=0'  # Contrôle du cache
         })
 
     def setup_driver(self):
-        """Setup Chrome driver with enhanced stealth configuration"""
+        """Configuration avancée du driver Chrome avec techniques de contournement
+
+        Applique selenium-stealth et masquage des signatures WebDriver pour éviter la détection
+        """
         chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_argument("--headless")  # Mode sans interface graphique
+        chrome_options.add_argument("--no-sandbox")  # Contourne les restrictions de sandbox
+        chrome_options.add_argument("--disable-dev-shm-usage")  # Évite les problèmes de mémoire partagée
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")  # Cache les marqueurs d'automation
+        chrome_options.add_argument("--disable-web-security")  # Désactive certaines vérifications de sécurité
+        chrome_options.add_argument("--disable-features=VizDisplayCompositor")  # Optimisation rendu
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])  # Supprime le flag automation
+        chrome_options.add_experimental_option('useAutomationExtension', False)  # Désactive l'extension automation
         
-        # Random user agent for driver
+        # Application d'un user-agent aléatoire au driver pour cohérence
         user_agent = random.choice(self.user_agents)
-        chrome_options.add_argument(f"--user-agent={user_agent}")
+        chrome_options.add_argument(f"--user-agent={user_agent}")  # Synchronisation avec session HTTP
         
-        self.driver = webdriver.Chrome(options=chrome_options)
+        self.driver = webdriver.Chrome(options=chrome_options)  # Initialisation du driver avec options
         
-        # Apply enhanced stealth
+        # Application du module selenium-stealth pour masquage complet
         stealth(self.driver,
-                languages=["en-US", "en"],
-                vendor="Google Inc.",
-                platform="Win32",
-                webgl_vendor="Intel Inc.",
-                renderer="Intel Iris OpenGL Engine",
-                fix_hairline=True)
+                languages=["en-US", "en"],  # Langues du navigateur simulé
+                vendor="Google Inc.",  # Fabricant du navigateur
+                platform="Win32",  # Plateforme système simulée
+                webgl_vendor="Intel Inc.",  # Fabricant GPU simulé
+                renderer="Intel Iris OpenGL Engine",  # Moteur de rendu simulé
+                fix_hairline=True)  # Correction des artefacts de rendu
         
-        # Remove webdriver properties
-        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        self.driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]})")
-        self.driver.execute_script("Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})")
+        # Suppression manuelle des signatures WebDriver via JavaScript
+        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")  # Masque navigator.webdriver
+        self.driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]})")  # Simule des plugins réalistes
+        self.driver.execute_script("Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})")  # Force les langues
 
     def is_target_category(self, category_text):
-        """Check if a category is one we want to download (SAQ or PCI DSS)"""
-        category_lower = category_text.lower()
-        
+        """Vérifie si une catégorie correspond aux critères de téléchargement
+
+        Filtre sélectif pour ne traiter que les documents SAQ et PCI DSS
+        """
+        category_lower = category_text.lower()  # Normalisation en minuscules
+
+        # Mots-clés de catégories cibles pour filtrage précis
         target_keywords = [
-            'saq',
-            'self-assessment questionnaire',
-            'pci dss',
-            'data security standard',
-            'pci-dss'
+            'saq',                        # Self-Assessment Questionnaires
+            'self-assessment questionnaire',  # Nom complet SAQ
+            'pci dss',                    # Standard principal
+            'data security standard',     # Nom alternatif PCI DSS
+            'pci-dss'                    # Variant avec tiret
         ]
-        
+
+        # Vérification de correspondance avec les mots-clés cibles
         for keyword in target_keywords:
             if keyword in category_lower:
-                return True
-        
-        return False
+                return True  # Catégorie correspond aux critères
+
+        return False  # Catégorie non ciblée
 
     def get_document_categories(self):
-        """Get all available document categories from the page, filtered for SAQ and PCI DSS"""
+        """Récupère et filtre les catégories de documents disponibles
+
+        Analyse le dropdown des catégories pour identifier uniquement SAQ et PCI DSS
+        """
         try:
-            # Wait for the category dropdown to be present
+            # Attente de la présence du dropdown de catégories avec timeout
             category_dropdown = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "document_category"))
+                EC.presence_of_element_located((By.ID, "document_category"))  # Sélecteur par ID
             )
             
-            select = Select(category_dropdown)
-            categories = []
-            
+            select = Select(category_dropdown)  # Wrapper pour interaction avec dropdown
+            categories = []  # Liste des catégories filtrées
+
+            # Parcours de toutes les options disponibles
             for option in select.options:
-                if option.get_attribute("value"):  # Skip empty options
+                if option.get_attribute("value"):  # Ignore les options vides
                     category_text = option.text
-                    if self.is_target_category(category_text):
+                    if self.is_target_category(category_text):  # Application du filtre
                         categories.append({
-                            'value': option.get_attribute("value"),
-                            'text': category_text
+                            'value': option.get_attribute("value"),  # Valeur pour sélection
+                            'text': category_text  # Texte affiché
                         })
-                        logger.info(f"Found target category: {category_text}")
+                        logger.info(f"Found target category: {category_text}")  # Log des catégories retenues
             
+            # Récapitulatif des catégories identifiées
             logger.info(f"Found {len(categories)} target document categories (SAQ/PCI DSS): {[cat['text'] for cat in categories]}")
-            return categories
-            
+            return categories  # Retour de la liste filtrée
+
         except Exception as e:
-            logger.error(f"Could not find document categories: {e}")
-            return []
+            logger.error(f"Could not find document categories: {e}")  # Gestion d'erreur avec log
+            return []  # Retour vide en cas d'échec
 
     def select_category_and_get_links(self, category_value, category_text):
-        """Select a specific category and get all PDF links for that category"""
+        """Sélectionne une catégorie et extrait tous les liens PDF
+
+        Méthode simplifiée pour extraction basique des liens de téléchargement
+        """
         try:
-            logger.info(f"Processing target category: {category_text}")
-            
-            # Select the category
+            logger.info(f"Processing target category: {category_text}")  # Log de traitement
+
+            # Sélection de la catégorie dans le dropdown
             category_dropdown = self.driver.find_element(By.ID, "document_category")
             select = Select(category_dropdown)
-            select.select_by_value(category_value)
-            
-            # Wait for the page to load new content
-            time.sleep(3)
-            
-            # Wait for download buttons to be present
+            select.select_by_value(category_value)  # Application de la sélection
+
+            # Temporisation pour chargement du contenu dynamique
+            time.sleep(3)  # Attente fixe pour stabilité
+
+            # Attente conditionnelle de la présence des boutons de téléchargement
             try:
                 WebDriverWait(self.driver, 15).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "div[id^='download_btn_']"))
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "div[id^='download_btn_']"))  # Sélecteur CSS générique
                 )
             except Exception as e:
-                logger.warning(f"No download buttons found for category {category_text}: {e}")
-                return []
-            
-            # Get page source and parse with BeautifulSoup
-            page_source = self.driver.page_source
-            soup = BeautifulSoup(page_source, 'html.parser')
-            
-            # Find all download button divs
-            download_buttons = soup.find_all('div', id=lambda x: x and x.startswith('download_btn_'))
-            logger.info(f"Found {len(download_buttons)} download buttons in {category_text}")
-            
-            pdf_links = []
-            for button in download_buttons:
-                link_elem = button.find('a', class_='download_doc')
-                if link_elem and link_elem.get('href'):
+                logger.warning(f"No download buttons found for category {category_text}: {e}")  # Log d'alerte
+                return []  # Retour vide si pas de boutons
+
+            # Récupération du source HTML et parsing avec BeautifulSoup
+            page_source = self.driver.page_source  # HTML complet de la page
+            soup = BeautifulSoup(page_source, 'html.parser')  # Parser HTML pour navigation DOM
+
+            # Recherche de tous les boutons de téléchargement par pattern d'ID
+            download_buttons = soup.find_all('div', id=lambda x: x and x.startswith('download_btn_'))  # Filtre lambda sur ID
+            logger.info(f"Found {len(download_buttons)} download buttons in {category_text}")  # Comptage des boutons
+
+            pdf_links = []  # Accumulation des liens PDF trouvés
+            for button in download_buttons:  # Itération sur chaque bouton
+                link_elem = button.find('a', class_='download_doc')  # Recherche du lien de téléchargement
+                if link_elem and link_elem.get('href'):  # Vérification présence href
                     href = link_elem['href']
-                    # Ensure it's a PDF link
-                    if href.lower().endswith('.pdf'):
+                    # Validation que c'est bien un lien PDF
+                    if href.lower().endswith('.pdf'):  # Filtre par extension
                         pdf_links.append({
-                            'url': href,
-                            'category': category_text
+                            'url': href,  # URL de téléchargement
+                            'category': category_text  # Catégorie source
                         })
-                        logger.info(f"Found PDF link in {category_text}: {href}")
-            
-            # Also check for any direct PDF links in the page
-            all_links = soup.find_all('a', href=lambda x: x and x.lower().endswith('.pdf'))
-            for link in all_links:
+                        logger.info(f"Found PDF link in {category_text}: {href}")  # Log de découverte
+
+            # Recherche complémentaire de liens PDF directs dans la page
+            all_links = soup.find_all('a', href=lambda x: x and x.lower().endswith('.pdf'))  # Filtre tous liens PDF
+            for link in all_links:  # Itération sur les liens supplémentaires
                 href = link['href']
-                # Check if we already have this link
-                if not any(pdf['url'] == href for pdf in pdf_links):
+                # Vérification anti-doublon
+                if not any(pdf['url'] == href for pdf in pdf_links):  # Éviter les duplicatas
                     pdf_links.append({
                         'url': href,
                         'category': category_text
                     })
-                    logger.info(f"Found additional PDF link in {category_text}: {href}")
-            
-            return pdf_links
-            
+                    logger.info(f"Found additional PDF link in {category_text}: {href}")  # Log supplémentaire
+
+            return pdf_links  # Retour de tous les liens découverts
+
         except Exception as e:
-            logger.error(f"Error processing category {category_text}: {e}")
-            return []
+            logger.error(f"Error processing category {category_text}: {e}")  # Gestion d'erreur
+            return []  # Retour vide en cas d'échec
 
     def select_category_and_get_links_enhanced(self, category_value, category_text):
-        """Enhanced method that precisely maps documents with their versions and download links for both EN and FR"""
+        """Méthode avancée de mapping précis des documents avec versions et langues
+
+        Analyse fine des documents avec support multi-langue (EN/FR/ES/DE/PT)
+        et extraction des métadonnées complètes (nom, version, langue)
+        """
         try:
-            logger.info(f"Processing target category with enhanced precision: {category_text}")
-            
-            # Select the category
+            logger.info(f"Processing target category with enhanced precision: {category_text}")  # Log mode avancé
+
+            # Sélection de catégorie avec mapping précis
             category_dropdown = self.driver.find_element(By.ID, "document_category")
             select = Select(category_dropdown)
-            select.select_by_value(category_value)
-            
-            # Wait for the page to load new content
-            time.sleep(3)
-            
-            # Wait for download buttons to be present
+            select.select_by_value(category_value)  # Application de la sélection ciblée
+
+            # Attente du rechargement dynamique du contenu
+            time.sleep(3)  # Stabilisation après sélection
+
+            # Validation de la présence d'éléments téléchargeables
             try:
                 WebDriverWait(self.driver, 15).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "div[id^='download_btn_']"))
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "div[id^='download_btn_']"))  # Attente des boutons
                 )
             except Exception as e:
                 logger.warning(f"No download buttons found for category {category_text}: {e}")
-                return []
-            
-            # Get page source and parse with BeautifulSoup
+                return []  # Échec si pas de contenu
+
+            # Extraction du DOM pour analyse structurelle
             page_source = self.driver.page_source
-            soup = BeautifulSoup(page_source, 'html.parser')
+            soup = BeautifulSoup(page_source, 'html.parser')  # Parser pour analyse précise
             
-            # Find document rows using the structure provided by the user
-            # Each document has: document_name span, version div, and download button div
-            document_links = []
+            # Analyse structurelle des lignes de documents
+            # Structure: span document_name + div version + div download button
+            document_links = []  # Accumulation des métadonnées complètes
+
+            # Identification de tous les noms de documents par classe CSS
+            document_names = soup.find_all('span', class_='document_name')  # Sélecteur de noms
+            logger.info(f"Found {len(document_names)} document names in {category_text}")  # Inventaire
             
-            # Find all document name spans
-            document_names = soup.find_all('span', class_='document_name')
-            logger.info(f"Found {len(document_names)} document names in {category_text}")
-            
+            # Itération sur chaque document identifié
             for doc_span in document_names:
                 try:
-                    document_name = doc_span.text.strip()
-                    if not document_name:
+                    document_name = doc_span.text.strip()  # Extraction nom nettoyé
+                    if not document_name:  # Skip si nom vide
                         continue
                     
-                    # Find the parent row container
-                    row_container = doc_span.find_parent()
+                    # Navigation hiérarchique pour trouver le conteneur de ligne
+                    row_container = doc_span.find_parent()  # Remontée DOM initiale
+                    # Recherche du conteneur avec version_select_ (indicateur de ligne complète)
                     while row_container and not any(child.get('id', '').startswith('version_select_') for child in row_container.find_all()):
-                        row_container = row_container.find_parent()
-                    
-                    if not row_container:
+                        row_container = row_container.find_parent()  # Remontée continue
+
+                    if not row_container:  # Échec de localisation structurelle
                         logger.warning(f"Could not find row container for document: {document_name}")
-                        continue
+                        continue  # Skip ce document
                     
-                    # Find version info in this row
-                    version_div = row_container.find('div', id=lambda x: x and x.startswith('version_select_'))
-                    version_text = version_div.text.strip() if version_div else "N/A"
+                    # Extraction des informations de version dans la ligne
+                    version_div = row_container.find('div', id=lambda x: x and x.startswith('version_select_'))  # Localisation version
+                    version_text = version_div.text.strip() if version_div else "N/A"  # Texte version ou fallback
                     
-                    # Extract the unique ID from the version or download div
+                    # Extraction de l'identifiant unique du document
                     doc_id = None
-                    if version_div and version_div.get('id'):
-                        doc_id = version_div['id'].replace('version_select_', '')
+                    if version_div and version_div.get('id'):  # Si version div avec ID
+                        doc_id = version_div['id'].replace('version_select_', '')  # Extraction suffix ID
                     
-                    # Get both English and French versions if language dropdown is available
-                    language_variants = self.get_document_language_variants(row_container, doc_id, document_name, version_text, category_text)
+                    # Recherche des variantes linguistiques disponibles (EN/FR/ES/DE/PT)
+                    language_variants = self.get_document_language_variants(row_container, doc_id, document_name, version_text, category_text)  # Délégation multi-langue
                     
                     # If no language variants found, fall back to the default download
                     if not language_variants:
