@@ -5,16 +5,16 @@ Combine la détection de changements et le téléchargement automatique des docu
 Architecture : Change Detection -> Selective Download -> Extraction -> Email Notification
 """
 
-import os
-import sys
-import time
-import logging
-import base64
-from datetime import datetime
-from typing import Dict, List, Optional
-import shutil
-import pandas as pd
-import resend
+import os  # Manipulation des chemins et système de fichiers
+import sys  # Configuration des chemins Python et gestion des erreurs système
+import time  # Mesure du temps d'exécution et timestamps
+import logging  # Système de logging structuré
+import base64  # Encodage des pièces jointes email
+from datetime import datetime  # Génération de timestamps et horodatage
+from typing import Dict, List, Optional  # Annotations de types pour la documentation du code
+import shutil  # Opérations de copie et archivage des fichiers
+import pandas as pd  # Manipulation des données CSV et DataFrames
+import resend  # Service d'envoi d'emails pour les notifications
 
 # Configuration des chemins des modules : architecture modulaire avec 3 composants principaux
 script_dir = os.path.dirname(os.path.abspath(__file__))
