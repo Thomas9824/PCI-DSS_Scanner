@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-PCI Auto Scraper - Script combiné pour détecter les changements et télécharger automatiquement
+PCI Auto Scraper - Orchestrateur principal du système de monitoring PCI DSS/SAQ
 Combine la détection de changements et le téléchargement automatique des documents PCI DSS/SAQ
+Architecture : Change Detection -> Selective Download -> Extraction -> Email Notification
 """
 
 import os
@@ -15,41 +16,43 @@ import shutil
 import pandas as pd
 import resend
 
-# chemins des sous-projets
+# Configuration des chemins des modules : architecture modulaire avec 3 composants principaux
 script_dir = os.path.dirname(os.path.abspath(__file__))
-pci_change_scraper_path = os.path.join(script_dir, 'pci_change_scraper')
-pci_pdf_scraper_path = os.path.join(script_dir, 'pci_pdf_scraper')
-pci_pdf_extractor_path = os.path.join(script_dir, 'pci_pdf_extractor')
+pci_change_scraper_path = os.path.join(script_dir, 'pci_change_scraper')  # Module de détection des changements
+pci_pdf_scraper_path = os.path.join(script_dir, 'pci_pdf_scraper')        # Module de téléchargement PDF
+pci_pdf_extractor_path = os.path.join(script_dir, 'pci_pdf_extractor')    # Module d'extraction multilingue
 
+# Injection des modules dans le PATH pour import dynamique
 sys.path.insert(0, pci_change_scraper_path)
 sys.path.insert(0, pci_pdf_scraper_path)
 sys.path.insert(0, pci_pdf_extractor_path)
 
-# Import des modules des sous-projets
+# Import des modules spécialisés avec gestion d'erreur
 try:
-    from pci_scraper import PCIDocumentScraper
-    from pci_pdf_scraper import PCIScraperEnhanced
-    from testv5 import PCIRequirementsExtractor as PCIRequirementsExtractorFR
-    from testv5_EN import PCIRequirementsExtractor as PCIRequirementsExtractorEN
-    from testv5_ES import PCIRequirementsExtractor as PCIRequirementsExtractorES
-    from testv5_DE import PCIRequirementsExtractor as PCIRequirementsExtractorDE
-    from testv5_PT import PCIRequirementsExtractor as PCIRequirementsExtractorPT
+    from pci_scraper import PCIDocumentScraper                                  # Scraper de détection de changements
+    from pci_pdf_scraper import PCIScraperEnhanced                             # Téléchargeur PDF amélioré avec anti-403
+    from testv5 import PCIRequirementsExtractor as PCIRequirementsExtractorFR  # Extracteur français
+    from testv5_EN import PCIRequirementsExtractor as PCIRequirementsExtractorEN  # Extracteur anglais
+    from testv5_ES import PCIRequirementsExtractor as PCIRequirementsExtractorES  # Extracteur espagnol
+    from testv5_DE import PCIRequirementsExtractor as PCIRequirementsExtractorDE  # Extracteur allemand
+    from testv5_PT import PCIRequirementsExtractor as PCIRequirementsExtractorPT  # Extracteur portugais
 except ImportError as e:
-    print(f" Erreur d'import des modules: {e}")
-    print("   pip install -r requirements.txt")
+    print(f"❌ Erreur d'import des modules: {e}")
+    print("💡 Installez les dépendances avec: pip install -r requirements.txt")
     sys.exit(1)
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Configuration de Resend pour l'envoi d'emails
+# Configuration du service d'email Resend pour les notifications automatiques
 import os
 from dotenv import load_dotenv
 
-# Charger les variables d'environnement
+# Chargement des variables d'environnement (.env)
 load_dotenv()
 
+# Initialisation de l'API Resend avec validation obligatoire
 resend.api_key = os.getenv('RESEND_API_KEY')
 if not resend.api_key:
     logger.error("RESEND_API_KEY non trouvée dans les variables d'environnement. Créez un fichier .env avec votre clé API.")
@@ -57,58 +60,60 @@ if not resend.api_key:
 
 class PCIAutoScraper:
     """
-    Scraper automatique qui combine la détection de changements et le téléchargement
+    Orchestrateur principal combinant détection de changements, téléchargement sélectif et extraction multilingue
+    Pipeline: Change Detection -> Selective Download -> Multi-language Extraction -> Email Report
     """
-    
+
     def __init__(self, headless: bool = True, download_dir: str = "downloads"):
         """
-        Initialise le scraper automatique
-        
+        Initialise l'orchestrateur avec configuration par défaut pour automation
+
         Args:
-            headless: Mode headless pour les navigateurs
-            download_dir: Répertoire de téléchargement des PDFs
+            headless: Mode headless pour les navigateurs (True pour automation)
+            download_dir: Répertoire de téléchargement des PDFs avec sessions horodatées
         """
         self.headless = headless
         self.download_dir = download_dir
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # Initialise les scrapers
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Session unique horodatée
+
+        # Instances des modules spécialisés (lazy loading)
         self.change_detector = None
         self.pdf_downloader = None
-        
-        # Statistiques
+
+        # Métriques de performance et traçabilité
         self.stats = {
-            'documents_checked': 0,
-            'changes_detected': 0,
-            'downloads_attempted': 0,
-            'downloads_successful': 0,
-            'new_documents': 0,
-            'updated_versions': 0,
-            'removed_documents': 0,
-            'extracted_files': 0
+            'documents_checked': 0,      # Nombre total de documents vérifiés
+            'changes_detected': 0,       # Nombre de changements détectés
+            'downloads_attempted': 0,    # Tentatives de téléchargement
+            'downloads_successful': 0,   # Téléchargements réussis
+            'new_documents': 0,          # Nouveaux documents
+            'updated_versions': 0,       # Versions mises à jour
+            'removed_documents': 0,      # Documents supprimés
+            'extracted_files': 0         # Fichiers CSV générés
         }
-        
-        # Stocker les fichiers extraits pour l'email
+
+        # Stockage des fichiers CSV générés pour transmission par email
         self.extracted_csv_files = []
         
     def setup_scrapers(self):
-        """Configure les scrapers pour la détection et le téléchargement"""
+        """Initialise et configure les modules avec patching pour intégration centralisée"""
         try:
             logger.info("Configuration des scrapers...")
-            
-            # Configure le détecteur de changements avec chemins relatifs
+
+            # Initialisation du détecteur de changements (Selenium-based)
             self.change_detector = PCIDocumentScraper(headless=self.headless)
-            
-            # Patch les méthodes pour utiliser le répertoire de travail actuel
+
+            # Configuration des chemins centralisés (override des chemins hardcodés des modules)
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            self.data_dir = script_dir  # Utilise le répertoire du script pour les données
+            self.data_dir = script_dir  # Répertoire centralisé pour les données
             
-            # Override les méthodes qui utilisent des chemins codés en dur
+            # Patching dynamique : Override des méthodes utilisant des chemins hardcodés
             original_load = self.change_detector.load_previous_data
             original_save = self.change_detector.save_to_csv
             original_save_report = self.change_detector.save_changes_report
-            
+
             def patched_load_previous_data(filename="pci_documents.csv"):
+                """Chargement des données de référence avec gestion centralisée des chemins"""
                 try:
                     csv_path = os.path.join(self.data_dir, filename)
                     if os.path.exists(csv_path):
@@ -123,47 +128,46 @@ class PCIAutoScraper:
                     return None
             
             def patched_save_to_csv(filename="pci_documents.csv", backup_previous=True):
+                """Sauvegarde avec backup automatique et horodatage"""
                 try:
                     if not self.change_detector.documents:
                         logger.warning("Aucun document à sauvegarder")
                         return
-                    
+
                     csv_path = os.path.join(self.data_dir, filename)
-                    
-                    # Sauvegarde l'ancien fichier si demandé
+
+                    # Système de backup automatique avec timestamp
                     if backup_previous and os.path.exists(csv_path):
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         backup_filename = f"pci_documents_backup_{timestamp}.csv"
                         backup_path = os.path.join(self.data_dir, backup_filename)
-                        
+
                         shutil.copy2(csv_path, backup_path)
                         logger.info(f"Ancienne version sauvegardée dans: {backup_filename}")
-                    
-                    # Crée un DataFrame pandas
+
+                    # Génération DataFrame avec métadonnées
                     df = pd.DataFrame(self.change_detector.documents)
-                    
-                    # Ajoute un timestamp
-                    df['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    
-                    # Sauvegarde en CSV
+                    df['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # Timestamp de mise à jour
+
+                    # Persistance CSV avec encodage UTF-8
                     df.to_csv(csv_path, index=False, encoding='utf-8')
-                    
+
                     logger.info(f"Documents sauvegardés dans: {csv_path}")
                     logger.info(f"Nombre de documents sauvegardés: {len(self.change_detector.documents)}")
-                    
+
                 except Exception as e:
                     logger.error(f"Erreur lors de la sauvegarde: {e}")
             
             def patched_save_changes_report(changes, timestamp=None):
-                # Ne fait rien - pas de création de fichier rapport
+                """Désactivation des rapports fichiers - reporting via email uniquement"""
                 pass
-            
-            # Applique les patches
+
+            # Application des patches dynamiques aux modules
             self.change_detector.load_previous_data = patched_load_previous_data
             self.change_detector.save_to_csv = patched_save_to_csv
             self.change_detector.save_changes_report = patched_save_changes_report
-            
-            # Configure le téléchargeur PDF avec le bon répertoire
+
+            # Initialisation du téléchargeur PDF avec anti-403 et répertoire absolu
             full_download_path = os.path.abspath(self.download_dir)
             self.pdf_downloader = PCIScraperEnhanced(download_dir=full_download_path)
             
@@ -175,49 +179,51 @@ class PCIAutoScraper:
     
     def detect_changes(self) -> Optional[Dict[str, List]]:
         """
-        Détecte les changements dans les documents PCI DSS/SAQ
-        
+        Pipeline de détection des changements : scraping -> comparaison -> persistance
+
         Returns:
-            Dictionnaire des changements détectés ou None en cas d'erreur
+            Dict contenant 'new_documents', 'updated_versions', 'removed_documents' ou None si erreur
         """
         try:
-            logger.info(" Démarrage de la détection de changements...")
-            
-            # Charge les données précédentes
+            logger.info("🔍 Démarrage de la détection de changements...")
+
+            # Phase 1: Chargement des données de référence
             previous_data = self.change_detector.load_previous_data("pci_documents.csv")
-            
-            # Configure le driver
+
+            # Phase 2: Configuration driver Selenium
             self.change_detector.setup_driver()
-            
-            # Scrape tous les documents actuels
+
+            # Phase 3: Scraping complet des documents actuels (PCI DSS + SAQ)
             current_documents = self.change_detector.scrape_all_documents()
             self.stats['documents_checked'] = len(current_documents)
             
             if not current_documents:
                 logger.error("Aucun document trouvé lors du scraping")
                 return None
-            
-            # Compare avec les données précédentes
+
+            # Phase 4: Analyse comparative avec les données de référence
             changes = self.change_detector.compare_versions(previous_data)
-            
-            # Met à jour les statistiques
+
+            # Phase 5: Mise à jour des métriques de changement
             self.stats['new_documents'] = len(changes['new_documents'])
             self.stats['updated_versions'] = len(changes['updated_versions'])
             self.stats['removed_documents'] = len(changes['removed_documents'])
             self.stats['changes_detected'] = (
-                self.stats['new_documents'] + 
-                self.stats['updated_versions'] + 
+                self.stats['new_documents'] +
+                self.stats['updated_versions'] +
                 self.stats['removed_documents']
             )
-            
-            # Sauvegarde les nouvelles données
+
+            # Phase 6: Persistance des nouvelles données avec backup automatique
             self.change_detector.save_to_csv("pci_documents.csv", backup_previous=True)
             
-            # Log des changements sans créer de fichier rapport
+            # Phase 7: Logging des changements détectés (pas de fichier rapport)
             if self.stats['changes_detected'] > 0:
                 logger.info(f"{self.stats['changes_detected']} changements détectés !")
+                # Log détaillé des nouveaux documents
                 for doc in changes['new_documents']:
                     logger.info(f"Nouveau: {doc['name']} ({doc['category']})")
+                # Log détaillé des mises à jour de version
                 for change in changes['updated_versions']:
                     logger.info(f"Mis à jour: {change['name']} ({change['category']}) - {change['old_version']} → {change['new_version']}")
             else:
@@ -234,19 +240,20 @@ class PCIAutoScraper:
     
     def should_download(self, changes: Dict[str, List]) -> bool:
         """
-        Détermine s'il faut lancer un téléchargement basé sur les changements détectés
-        
+        Logique de décision pour le téléchargement sélectif
+
         Args:
             changes: Dictionnaire des changements détectés
-            
+
         Returns:
-            True s'il faut télécharger, False sinon
+            True si téléchargement requis (nouveaux documents ou versions mises à jour)
         """
+        # Calcul des changements nécessitant un téléchargement (exclut les suppressions)
         total_changes = (
-            len(changes['new_documents']) + 
+            len(changes['new_documents']) +
             len(changes['updated_versions'])
         )
-        
+
         if total_changes > 0:
             logger.info(f"{total_changes} changements nécessitent un téléchargement")
             return True
@@ -256,26 +263,26 @@ class PCIAutoScraper:
     
     def download_changed_documents(self, changes: Dict[str, List]) -> bool:
         """
-        Télécharge uniquement les documents qui ont changé
-        
+        Pipeline de téléchargement sélectif : collecte -> téléchargement -> extraction -> archivage
+
         Args:
             changes: Dictionnaire des changements détectés
-            
+
         Returns:
-            True si le téléchargement s'est bien passé, False sinon
+            True si succès complet du pipeline, False en cas d'erreur
         """
         try:
             logger.info("📥 Démarrage du téléchargement sélectif des documents modifiés...")
-            
-            # Collecte les documents à télécharger
+
+            # Phase 1: Collecte des documents cibles
             documents_to_download = []
-            
-            # Ajoute les nouveaux documents
+
+            # Ajout des nouveaux documents
             for doc in changes['new_documents']:
                 documents_to_download.append(doc)
                 logger.info(f"À télécharger (nouveau): {doc['name']} ({doc['category']})")
-            
-            # Ajoute les documents avec versions mises à jour
+
+            # Ajout des documents avec versions mises à jour
             for change in changes['updated_versions']:
                 doc_info = {
                     'name': change['name'],
@@ -328,60 +335,60 @@ class PCIAutoScraper:
     
     def download_specific_documents(self, documents_to_download: List[Dict], download_dir: str) -> bool:
         """
-        Télécharge des documents spécifiques en utilisant le scraper PDF modifié
-        
+        Téléchargement sélectif avec filtrage précis et fallback automatique
+
         Args:
-            documents_to_download: Liste des documents à télécharger
-            download_dir: Répertoire de téléchargement
-            
+            documents_to_download: Liste des documents cibles avec métadonnées
+            download_dir: Répertoire de destination
+
         Returns:
-            True si le téléchargement réussit
+            True si téléchargement réussi avec au moins un fichier
         """
         try:
             logger.info(f"🔧 Configuration du téléchargeur pour {len(documents_to_download)} documents spécifiques")
-            
-            # Configure le téléchargeur PDF pour le téléchargement sélectif
+
+            # Initialisation du téléchargeur avec anti-403 et stealth mode
             selective_downloader = PCIScraperEnhanced(download_dir=download_dir)
-            
-            # Override la méthode pour filtrer seulement les documents changés
+
+            # Monkey patching du téléchargeur pour filtrage sélectif
             original_get_all_pdf_links = selective_downloader.get_all_pdf_links
-            
+
             def selective_get_pdf_links():
-                """Version modifiée qui filtre selon les documents à télécharger avec matching précis"""
+                """Filtrage précis basé sur les changements détectés avec matching multi-critères"""
                 logger.info("Recherche des liens PDF pour les documents spécifiques...")
-                
-                # Obtient tous les liens PDF disponibles avec informations détaillées
+
+                # Récupération exhaustive des liens PDF avec métadonnées
                 all_links = original_get_all_pdf_links()
-                
-                # Filtre pour ne garder que les documents qui ont changé
+
+                # Algorithme de filtrage précis avec matching multi-critères
                 filtered_links = []
-                
+
                 for link_info in all_links:
-                    # Vérifie si ce lien correspond à un document à télécharger
+                    # Matching précis nom/version/catégorie pour chaque document cible
                     for doc in documents_to_download:
                         if self.matches_document_precise(link_info, doc):
                             filtered_links.append(link_info)
                             logger.info(f"Lien trouvé pour: {doc['name']} (v{doc.get('version', 'N/A')}) -> {link_info['url']}")
                             break
-                
+
                 logger.info(f"📊 {len(filtered_links)} liens PDF filtrés sur {len(all_links)} disponibles")
                 return filtered_links
             
-            # Applique le filtre
+            # Application du patch de filtrage sélectif
             selective_downloader.get_all_pdf_links = selective_get_pdf_links
-            
-            # Lance le téléchargement sélectif
+
+            # Exécution du téléchargement sélectif avec anti-403
             selective_downloader.run()
-            
-            # Vérifie les résultats
+
+            # Validation des résultats de téléchargement
             downloaded_files = [f for f in os.listdir(download_dir) if f.endswith('.pdf')] if os.path.exists(download_dir) else []
-            
+
             if downloaded_files:
                 logger.info(f"Téléchargement sélectif réussi: {len(downloaded_files)} fichiers")
                 return True
             else:
                 logger.warning("Aucun fichier téléchargé lors du téléchargement sélectif")
-                # Fallback: essaie de télécharger au moins quelques documents critiques
+                # Stratégie de fallback : téléchargement des documents critiques
                 return self.fallback_download(documents_to_download, download_dir)
                 
         except Exception as e:
@@ -390,38 +397,39 @@ class PCIAutoScraper:
     
     def matches_document_precise(self, link_info: Dict, target_doc: Dict) -> bool:
         """
-        Méthode de matching précise utilisant les informations détaillées du document
-        
+        Algorithme de matching multi-critères pour correspondance exacte document/lien
+
         Args:
-            link_info: Informations détaillées du lien (avec document_name, version, etc.)
-            target_doc: Document cible à matcher
-            
+            link_info: Métadonnées du lien (document_name, version, category)
+            target_doc: Document cible avec critères de recherche
+
         Returns:
-            True si le document correspond exactement
+            True si matching exact sur nom + catégorie + version (si disponible)
         """
         try:
-            # Extrait les informations du lien
+            # Extraction et normalisation des métadonnées du lien
             link_doc_name = link_info.get('document_name', '').lower().strip()
             link_version = link_info.get('version', '').lower().strip()
             link_category = link_info.get('category', '').lower().strip()
-            
-            # Extrait les informations du document cible
+
+            # Extraction et normalisation des critères du document cible
             target_name = target_doc.get('name', '').lower().strip()
             target_version = target_doc.get('version', '').lower().strip()
             target_category = target_doc.get('category', '').lower().strip()
-            
-            # Matching exact du nom et de la catégorie
+
+            # Algorithme de matching : nom exact + catégorie flexible
             name_match = link_doc_name == target_name
             category_match = any(cat in link_category for cat in [target_category, target_category.replace(' ', '')])
             
-            # Si on a les versions, on les compare aussi
+            # Matching conditionnel des versions (si disponibles)
             version_match = True
             if target_version and target_version != 'n/a' and link_version and link_version != 'n/a':
-                # Normalise les versions pour la comparaison
+                # Normalisation et comparaison des versions
                 target_version_clean = self.normalize_version(target_version)
                 link_version_clean = self.normalize_version(link_version)
                 version_match = target_version_clean == link_version_clean
-            
+
+            # Calcul du résultat final du matching (AND logique)
             match_result = name_match and category_match and version_match
             
             if match_result:
@@ -460,23 +468,23 @@ class PCIAutoScraper:
 
     def extract_downloaded_pdfs(self, downloaded_files: List[str], session_dir: str):
         """
-        Extrait automatiquement les exigences des PDFs téléchargés (EN et FR)
-        
+        Pipeline d'extraction multilingue : détection langue -> extraction -> sauvegarde CSV
+
         Args:
-            downloaded_files: Liste des fichiers PDF téléchargés
-            session_dir: Répertoire contenant les PDFs
+            downloaded_files: Liste des PDFs téléchargés
+            session_dir: Répertoire de travail de la session
         """
         try:
             for pdf_file in downloaded_files:
                 pdf_path = os.path.join(session_dir, pdf_file)
-                
-                # Détermine la langue du document basé sur le nom du fichier
+
+                # Détection automatique de la langue basée sur les indicateurs du nom de fichier
                 pdf_name_without_ext = os.path.splitext(pdf_file)[0]
                 language = self.detect_document_language(pdf_file)
-                
+
                 logger.info(f"🔍 Analyse de langue pour {pdf_file}: {language}")
-                
-                # Sélectionne l'extracteur approprié selon la langue
+
+                # Sélection de l'extracteur spécialisé selon la langue détectée
                 if language == 'FR':
                     logger.info(f"📋 Extraction FR: {pdf_file}")
                     extractor = PCIRequirementsExtractorFR(pdf_path)
@@ -489,22 +497,23 @@ class PCIAutoScraper:
                 elif language == 'PT':
                     logger.info(f"📋 Extraction PT: {pdf_file}")
                     extractor = PCIRequirementsExtractorPT(pdf_path)
-                else:  # EN par défaut
+                else:  # EN par défaut (fallback)
                     logger.info(f"📋 Extraction EN: {pdf_file}")
                     extractor = PCIRequirementsExtractorEN(pdf_path)
                 
                 output_file = os.path.join(session_dir, f"{pdf_name_without_ext}.csv")
-                
-                # Extrait les exigences
+
+                # Extraction des exigences PCI DSS avec l'extracteur spécialisé
                 requirements = extractor.extract_all_requirements()
-                
+
                 if requirements:
+                    # Sauvegarde des exigences en format CSV
                     extractor.save_to_csv(output_file)
-                    
-                    # Ajoute le fichier CSV à la liste pour l'email
+
+                    # Enregistrement du fichier pour inclusion dans l'email de rapport
                     self.extracted_csv_files.append(output_file)
                     self.stats['extracted_files'] += 1
-                    
+
                     language = self.detect_document_language(pdf_file)
                     logger.info(f"✅ Extraction {language} réussie: {len(requirements)} exigences → {os.path.basename(output_file)}")
                 else:
@@ -515,17 +524,17 @@ class PCIAutoScraper:
     
     def detect_document_language(self, filename: str) -> str:
         """
-        Détermine la langue d'un document basé sur son nom
-        
+        Détecteur automatique de langue basé sur les patterns du nom de fichier
+
         Args:
-            filename: Nom du fichier PDF ou CSV
-            
+            filename: Nom du fichier PDF ou CSV à analyser
+
         Returns:
-            Code de langue ('EN', 'FR', 'ES', 'DE', 'PT')
+            Code de langue ISO ('EN', 'FR', 'ES', 'DE', 'PT') avec fallback EN
         """
         filename_lower = filename.lower()
-        
-        # Indicateurs de langue par priorité
+
+        # Mapping des indicateurs linguistiques par ordre de priorité
         language_indicators = {
             'EN': ['_en.pdf', '_en.csv', '-en.pdf', '-en.csv', '_en_', '-en_', 'english'],
             'FR': ['_fr.pdf', '_fr.csv', '-fr.pdf', '-fr.csv', '_fr_', '-fr_', 'french', 'francais', 'merchant-fr', '-merchant-fr'],
@@ -533,13 +542,13 @@ class PCIAutoScraper:
             'DE': ['_de.pdf', '_de.csv', '-de.pdf', '-de.csv', '_de_', '-de_', 'german', 'deutsch', 'merchant-de', '-merchant-de'],
             'PT': ['_pt.pdf', '_pt.csv', '-pt.pdf', '-pt.csv', '_pt_', '-pt_', 'portuguese', 'portugues', 'merchant-pt', '-merchant-pt']
         }
-        
-        # Vérification de chaque langue
+
+        # Algorithme de détection par pattern matching
         for lang_code, indicators in language_indicators.items():
             if any(indicator in filename_lower for indicator in indicators):
                 return lang_code
-        
-        # Par défaut, considère comme anglais si pas d'indicateur clair
+
+        # Fallback : anglais par défaut si aucun indicateur détecté
         return 'EN'
 
     def matches_document(self, url: str, doc_name: str, doc_category: str) -> bool:
@@ -691,16 +700,16 @@ class PCIAutoScraper:
     
     def send_email_summary(self, changes: Dict[str, List] = None, execution_time: float = 0):
         """
-        Envoie un email récapitulatif de la session de scraping
-        
+        Générateur et envoyeur de rapport HTML par email avec pièces jointes CSV
+
         Args:
             changes: Dictionnaire des changements détectés (optionnel)
-            execution_time: Temps d'exécution en secondes
+            execution_time: Temps d'exécution total en secondes
         """
         try:
             logger.info("📧 Envoi du récapitulatif par email...")
-            
-            # Détermine le statut
+
+            # Calcul du statut de la session basé sur les métriques
             if self.stats['changes_detected'] == 0:
                 status = "Aucun Changement"
                 status_class = "status-success"
@@ -710,8 +719,8 @@ class PCIAutoScraper:
             else:
                 status = "Problème"
                 status_class = "status-warning"
-            
-            # Génère le contenu HTML
+
+            # Génération du template HTML responsive avec CSS intégré
             html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -910,10 +919,11 @@ class PCIAutoScraper:
 
     def run(self) -> bool:
         """
-        Exécute le processus complet : détection + téléchargement automatique
-        
+        Méthode principale : orchestration complète du pipeline PCI DSS monitoring
+        Workflow: Setup -> Change Detection -> Download Decision -> Selective Download -> Extraction -> Reporting
+
         Returns:
-            True si tout s'est bien passé, False sinon
+            True si pipeline exécuté avec succès, False en cas d'erreur critique
         """
         start_time = time.time()
         success = False
@@ -994,16 +1004,16 @@ class PCIAutoScraper:
             logger.info(f"Statut: {'SUCCÈS' if success else 'ÉCHEC'}")
 
 def main():
-    """Fonction principale - Lance automatiquement la détection et le téléchargement"""
+    """Point d'entrée principal - Initialisation et exécution du pipeline complet PCI DSS monitoring"""
     try:
         print("Démarrage du PCI Auto Scraper")
         print("Détection automatique des changements et téléchargement des documents PCI DSS/SAQ")
         print("=" * 80)
-        
-        # Crée et lance le scraper automatique en mode headless par défaut
+
+        # Initialisation de l'orchestrateur en mode automatisé (headless + téléchargements sélectifs)
         auto_scraper = PCIAutoScraper(
-            headless=True,  # Mode headless pour fonctionnement automatique
-            download_dir='downloads'
+            headless=True,        # Mode headless pour automation et déploiement serveur
+            download_dir='downloads'  # Répertoire de stockage avec sessions horodatées
         )
         
         success = auto_scraper.run()
