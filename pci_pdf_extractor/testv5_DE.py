@@ -124,39 +124,60 @@ class PCIRequirementsExtractor:
 
     def clean_text(self, text: str) -> str:
         """Reinigt extrahierten PDF-Text durch Entfernen von deutschen Artefakten"""
-        # Entferne umfassende Copyright- und Seitenartefakte
+        # Entferne umfassende Copyright- und Seitenartefakte mit verbesserter Pattern-Erkennung
         text = re.sub(r'PCI DSS v[\d.]+\s+SAQ D für Händler.*?Oktober \d+', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'SAQ D von PCI DSS v[\d.]+.*?Seite \d+.*?(?:Erfüllt|Nicht erfüllt)', '', text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'© 2006[−-]\d+\s+PCI Security Standards Council,\s+LLC\.\s+Alle Rechte vorbehalten\.\s+Seite\s+\w+', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'© 2006[−-]\d+\s+PCI Security Standards Council,\s+LLC\.\s+Alle Rechte vorbehalten\.\s+Seite\s+\d+', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'PCI DSS v[\d.]+\s+SAQ D für Händler,\s+Abschnitt \d+:\s+Fragebogen zur Selbstbewertung\s+Oktober\s+\d+', '', text, flags=re.IGNORECASE)
+        
+        # Verstärkte Copyright-Entfernung mit flexiblen Patterns
+        text = re.sub(r'© 2006[−-]\d+\s+PCI Security Standards Council,?\s*LLC\.?\s*Alle Rechte vorbehalten\.?\s*Seite\s*\w*\d*', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'© 2006\s*[−-]\s*\d+\s+PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite\s*\d*', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?(?:Seite \d+)?', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'© 2006[−-]\d+.*?LLC.*?Alle Rechte vorbehalten\.?', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?(?:Seite \d+)?', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Alle Rechte vorbehalten.*?(?:Seite \d+)?', '', text, flags=re.IGNORECASE)
+        
+        # Entferne spezifische deutsche Artefakte und Header-Kombinationen
+        text = re.sub(r'© 2006\s*[−-]\s*\d+\s+Anforderung\s+\d+:\s+.*?PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'Anforderung\s+\d+:\s+.*?auf alle Systemkomponenten\s+PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'Schutz von Kontodaten\s+Anforderung\s+\d+:\s+.*?PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦', '', text, flags=re.IGNORECASE | re.DOTALL)
+        
+        # Nettoyer les artefacts résiduels spécifiques
+        text = re.sub(r'PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s+PCI DSS\s*[−-]\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦', '', text, flags=re.IGNORECASE)
+        
+        # Datumsangaben und Versionsreferenzen
         text = re.sub(r'Oktober \d+', '', text, flags=re.IGNORECASE)
+        
+        # Deutsche UI-Elemente und Instruktionen
         text = re.sub(r'♦\s*Informationen zu diesen.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Anforderung Erwartetes Testen Antwort♦.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'© 2006\s*[−-]\s*\d+\s+PCI DSS\s*[−-]\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Eine Antwort für jede Anforderung ankreuzen.*?\)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\(Eine Antwort ankreuzen.*?\)', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Abschnitt \d+ :', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Abschnitt \d+\s*:', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Testverfahren\s*$', '', text, flags=re.IGNORECASE | re.MULTILINE)
         
-        # Reinige Antworttabellen
+        # Verstärkte Reinigung der deutschen Antworttabellen
         text = re.sub(r'Vorhanden\s+Vorhanden\s+mit CCW\s+Nicht\s+Anwendbar\s+Nicht\s+Getestet\s+Nicht\s+Vorhanden', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Erfüllt\s+Erfüllt mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht erfüllt', '', text, flags=re.IGNORECASE)
         text = re.sub(r'mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht erfüllt', '', text, flags=re.IGNORECASE)
         text = re.sub(r'mit CCW Nicht anwendbar Nicht getestet Nicht.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Vorhanden.*?Nicht\s+Vorhanden', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Erfüllt\s+Nicht erfüllt\s+Nicht anwendbar\s+Nicht getestet\s+CCW', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'(Erfüllt|Nicht erfüllt|Nicht anwendbar|Nicht getestet|CCW|Vorhanden|Nicht vorhanden)(\s+(Erfüllt|Nicht erfüllt|Nicht anwendbar|Nicht getestet|CCW|Vorhanden|Nicht vorhanden))+', '', text, flags=re.IGNORECASE)
         
-        # Zusätzliche Reinigungsmuster
+        # Zusätzliche und verstärkte Reinigungsmuster für deutsche SAQ-Artefakte
         text = re.sub(r'PCI DSS v[\d.]+\s+SAQ D für Händler,\s+Abschnitt \d+:\s+Fragebogen zur Selbstbewertung\s+\w+\s+\d+', '', text, flags=re.IGNORECASE)
         text = re.sub(r'PCI DSS v[\d.]+.*?Selbstbewertungsfragebogen.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Abschnitt\s+\d+\s*:\s*Selbstbewertungsfragebogen.*?(?=\n)', '', text, flags=re.IGNORECASE)
         text = re.sub(r'Abschnitt\s+\d+\s*:\s*Fragebogen zur Selbstbewertung.*?(?=\n)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'SAQ D für Händler.*?Abschnitt \d+.*?Fragebogen zur Selbstbewertung.*?(?=\n)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'für Händler,?\s*Abschnitt \d+:\s*Fragebogen zur Selbstbewertung.*?(?=\n)', '', text, flags=re.IGNORECASE)
         
-        # Reinige isolierte Seitenverweise
+        # Reinige isolierte Seitenverweise und Page-Artefakte
         text = re.sub(r'Seite \d+\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+        text = re.sub(r'Seite\s+\w*\d*\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
         
         # Ersetze mehrfache Zeilenumbrüche durch einfache
         text = re.sub(r'\n\s*\n', '\n\n', text)
@@ -435,38 +456,45 @@ class PCIRequirementsExtractor:
         return remaining_text
 
     def _clean_test_text(self, text: str) -> str:
-        """Cleans test text by removing artifacts"""
-        # Remove layout artifacts - more comprehensive patterns
-        text = re.sub(r'PCI DSS SAQ D.*?Page \d+.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?All Rights Reserved.*?Page \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'© 2006[−-]\d+.*?LLC.*?All Rights Reserved.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'PCI Security Standards Council.*?LLC.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'All Rights Reserved.*?Page \d+', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Page \d+.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'In Place.*?Not in Place', '', text, flags=re.IGNORECASE)
+        """Bereinigt Testtext durch Entfernen von deutschen Artefakten"""
+        # Entferne Layout-Artefakte - umfassendere deutsche Patterns
+        text = re.sub(r'PCI DSS SAQ D.*?Seite \d+.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'SAQ D für Händler.*?Seite \d+.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'© 2006[−-]\d+.*?LLC.*?Alle Rechte vorbehalten.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Seite \d+.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Vorhanden.*?Nicht vorhanden', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Erfüllt.*?Nicht erfüllt', '', text, flags=re.IGNORECASE)
         text = re.sub(r'♦\s*Informationen zu diesen.*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'© 2006\s*[−-]\s*\d+\s+PCI DSS\s*[−-]\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Anforderung\s+\d+:.*?PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦', '', text, flags=re.IGNORECASE)
         
-        # Remove response table artifacts
-        text = re.sub(r'with CCW Not Applicable Not Tested Not.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'In Place\s+In Place with CCW\s+Not Applicable\s+Not Tested\s+Not in Place', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'(In Place|Not in Place|Not Applicable|Not Tested|CCW)(\s+(In Place|Not in Place|Not Applicable|Not Tested|CCW))*', '', text, flags=re.IGNORECASE)
+        # Entferne deutsche Antworttabellen-Artefakte
+        text = re.sub(r'mit CCW Nicht anwendbar Nicht getestet Nicht.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Vorhanden\s+Vorhanden mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht vorhanden', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Erfüllt\s+Erfüllt mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht erfüllt', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'(Vorhanden|Nicht vorhanden|Nicht anwendbar|Nicht getestet|CCW|Erfüllt|Nicht erfüllt)(\s+(Vorhanden|Nicht vorhanden|Nicht anwendbar|Nicht getestet|CCW|Erfüllt|Nicht erfüllt))*', '', text, flags=re.IGNORECASE)
         
         # Normalize spaces
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
     def _clean_guidance_text(self, text: str) -> str:
-        """Cleans guidance text by removing artifacts"""
-        # Remove similar artifacts - more comprehensive patterns
-        text = re.sub(r'PCI DSS SAQ D.*?Page \d+.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?All Rights Reserved.*?Page \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'© 2006[−-]\d+.*?LLC.*?All Rights Reserved.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'PCI Security Standards Council.*?LLC.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'All Rights Reserved.*?Page \d+', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Page \d+.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'In Place.*?Not in Place', '', text, flags=re.IGNORECASE)
-        # Normalize spaces
+        """Bereinigt Leitfaden-Text durch Entfernen von deutschen Artefakten"""
+        # Entferne ähnliche Artefakte - umfassendere deutsche Patterns
+        text = re.sub(r'PCI DSS SAQ D.*?Seite \d+.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'SAQ D für Händler.*?Seite \d+.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'© 2006[−-]\d+.*?LLC.*?Alle Rechte vorbehalten.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Alle Rechte vorbehalten.*?Seite \d+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Seite \d+.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Vorhanden.*?Nicht vorhanden', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Erfüllt.*?Nicht erfüllt', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Anforderung\s+\d+:.*?PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦', '', text, flags=re.IGNORECASE)
+        # Normalisiere Leerzeichen
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
@@ -487,29 +515,38 @@ class PCIRequirementsExtractor:
         return True
 
     def _should_ignore_line(self, line: str) -> bool:
-        """Determines if a line should be ignored"""
+        """Bestimmt, ob eine Zeile ignoriert werden soll - Deutsche Version"""
         ignore_patterns = [
             r'^PCI DSS SAQ D',
+            r'^SAQ D für Händler',
             r'^© 2006[−-]\d+',
-            r'^Page \d+',
-            r'^October 2024',
-            r'^PCI DSS Requirement',
-            r'^Testing Procedures',
-            r'^Response',
-            r'^In Place',
-            r'^Not in Place',
-            r'^Not Applicable',
-            r'^Not Tested',
+            r'^Seite \d+',
+            r'^Oktober \d+',
+            r'^PCI DSS Anforderung',
+            r'^PCI DSS-Anforderung',
+            r'^Testverfahren',
+            r'^Tests Erwartet',
+            r'^Erwartetes Testen',
+            r'^Antwort',
+            r'^Vorhanden',
+            r'^Nicht vorhanden',
+            r'^Nicht anwendbar',
+            r'^Nicht getestet',
+            r'^Erfüllt',
+            r'^Nicht erfüllt',
             r'^♦ Informationen',
             r'^© 2006\s*[−-]\s*\d+\s+PCI DSS\s*[−-]\s*Anforderung',
-            r'^\(Check one response',
-            r'^Section \d+',
-            r'^All Rights Reserved',
+            r'^\(Eine Antwort',
+            r'^Abschnitt \d+',
+            r'^Alle Rechte vorbehalten',
             r'^LLC\.',
             r'^PCI Security Standards Council',
-            r'^Self\s*-\s*Assessment\s+Questionnaire',
+            r'^Fragebogen zur Selbstbewertung',
+            r'^Selbstbewertungsfragebogen',
             r'^PCI DSS v[\d.]+',
-            r'© 2006[−-]\d+.*PCI Security Standards Council.*LLC.*All Rights Reserved.*Page \d+',
+            r'© 2006[−-]\d+.*PCI Security Standards Council.*LLC.*Alle Rechte vorbehalten.*Seite \d+',
+            r'^Anforderung \d+:.*auf alle Systemkomponenten',
+            r'^Schutz von Kontodaten',
         ]
         
         line_lower = line.lower()
@@ -528,22 +565,29 @@ class PCIRequirementsExtractor:
         return False
 
     def _remove_response_artifacts(self, text: str) -> str:
-        """Removes questionnaire response checkbox artifacts"""
-        # Remove all variations of response checkboxes and copyright/page artifacts
+        """Entfernt deutsche Fragebogen-Antwort-Checkbox-Artefakte"""
+        # Entferne alle Variationen der deutschen Response-Checkboxen und Copyright-/Seiten-Artefakte
         patterns_to_remove = [
-            r'with CCW Not Applicable Not Tested Not.*?(?=\n|$)',
-            r'In Place\s+In Place with CCW\s+Not Applicable\s+Not Tested\s+Not in Place',
-            r'with CCW\s+Not Applicable\s+Not Tested\s+Not in Place',
-            r'In Place.*?Not in Place.*?(?=\n|$)',
-            r'(In Place|Not in Place|Not Applicable|Not Tested|CCW)(\s+(In Place|Not in Place|Not Applicable|Not Tested|CCW))+',
+            r'mit CCW Nicht anwendbar Nicht getestet Nicht.*?(?=\n|$)',
+            r'Vorhanden\s+Vorhanden mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht vorhanden',
+            r'Erfüllt\s+Erfüllt mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht erfüllt',
+            r'mit CCW\s+Nicht anwendbar\s+Nicht getestet\s+Nicht (vorhanden|erfüllt)',
+            r'Vorhanden.*?Nicht vorhanden.*?(?=\n|$)',
+            r'Erfüllt.*?Nicht erfüllt.*?(?=\n|$)',
+            r'(Vorhanden|Nicht vorhanden|Nicht anwendbar|Nicht getestet|CCW|Erfüllt|Nicht erfüllt)(\s+(Vorhanden|Nicht vorhanden|Nicht anwendbar|Nicht getestet|CCW|Erfüllt|Nicht erfüllt))+',
             r'♦\s*Informationen zu diesen.*?(?=\n|$)',
             r'© 2006\s*[−-]\s*\d+\s+PCI DSS\s*[−-]\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦.*?(?=\n|$)',
-            r'\(Check one response.*?\)',
-            r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?All Rights Reserved.*?Page \d+',
-            r'© 2006[−-]\d+.*?LLC.*?All Rights Reserved.*',
-            r'PCI Security Standards Council.*?LLC.*',
-            r'All Rights Reserved.*?Page \d+',
-            r'Page \d+[^\w]*$',
+            r'\(Eine Antwort.*?\)',
+            r'© 2006[−-]\d+.*?PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*?Seite \d+',
+            r'© 2006[−-]\d+.*?LLC.*?Alle Rechte vorbehalten.*',
+            r'PCI Security Standards Council.*?LLC.*?Alle Rechte vorbehalten.*',
+            r'Alle Rechte vorbehalten.*?Seite \d+',
+            r'Seite \d+[^\w]*$',
+            r'Anforderung \d+:.*?PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦',
+            r'Schutz von Kontodaten.*?PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦',
+            r'auf alle Systemkomponenten.*?PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦',
+            r'PCI DSS\s*[−-]?\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦.*?(?=\n|$)',
+            r'\s+PCI DSS\s*[−-]\s*Anforderung\s+Erwartetes\s+Testen\s+Antwort♦',
         ]
         
         for pattern in patterns_to_remove:
@@ -670,7 +714,7 @@ class PCIRequirementsExtractor:
         print(f"CSV structure: {len(csv_data)} requirements with simplified columns")
 
 def main():
-    pdf_path = "/Users/thomasmionnet/Downloads/PCI-DSS-v4-0-1-SAQ-D-Merchant-DE.pdf"
+    pdf_path = r"C:\Users\ThomasMionnet\OneDrive - Vigitrust\Desktop\pci_scraper\downloads\session_20250915_095228\SAQ_SAQ D Merchant_DE.pdf"
     print("PCI DSS DEUTSCHER EXTRAKTOR")
     print("=" * 60)
     
