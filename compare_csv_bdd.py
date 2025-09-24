@@ -68,7 +68,7 @@ class SimpleCSVBDDComparer:
             conn = mysql.connector.connect(**self.db_config)
             cursor = conn.cursor()
             
-            query = "SELECT reqid, pci_requirement FROM v4_requirements_en WHERE reqid IS NOT NULL AND pci_requirement IS NOT NULL"
+            query = "SELECT reqid, pci_requirement FROM v4_requirements_en WHERE reqid IS NOT NULL AND pci_requirement IS NOT NULL AND saq_d = 1"
             cursor.execute(query)
             
             for reqid, pci_requirement in cursor.fetchall():

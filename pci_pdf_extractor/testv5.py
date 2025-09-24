@@ -50,15 +50,15 @@ class PCIRequirementsExtractor:
         return 15
     
     def find_end_page(self) -> int:
-        """Algorithme de détection de fin basé sur la hiérarchie des exigences PCI DSS"""
+        """Algorithme de détection de fin basé sur la hiérarchie des exigences PCI DSS et annexes"""
         try:
             with open(self.pdf_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
                 highest_requirement = ""
                 end_page = len(pdf_reader.pages) - 1
 
-                # Pattern pour numérotation hiérarchique PCI DSS (ex: 12.3.4.1)
-                pattern = r'^(\d+\.\d+(?:\.\d+)*(?:\.\d+)*)\s+'
+                # Pattern pour numérotation hiérarchique PCI DSS et annexes (ex: 12.3.4.1, A1.1.1, A2.1.1, A1.1, A2.1)
+                pattern = r'^((?:A\d+\.)?\d+(?:\.\d+)*)\s+'
 
                 # Balayage complet pour identifier la dernière exigence valide
                 for page_num in range(len(pdf_reader.pages)):
@@ -66,15 +66,26 @@ class PCIRequirementsExtractor:
                     matches = re.findall(pattern, page_text, re.MULTILINE)
 
                     for match in matches:
-                        # Validation : exigences PCI DSS dans la plage 1-12
-                        parts = match.split('.')
-                        if len(parts) >= 2:
-                            main_num = int(parts[0])
-                            if 1 <= main_num <= 12:
-                                # Comparaison hiérarchique pour trouver la plus haute exigence
-                                if self._is_higher_requirement(match, highest_requirement):
-                                    highest_requirement = match
-                                    end_page = page_num
+                        # Validation : exigences PCI DSS principales (1-12) ou annexes (A1, A2, etc.)
+                        if match.startswith('A'):
+                            # Format annexe : A1.1.1, A2.1.1, A1.1, A2.1, etc.
+                            annexe_parts = match[1:].split('.')
+                            if len(annexe_parts) >= 1:  # Au minimum A1.1
+                                annexe_num = int(annexe_parts[0])
+                                if annexe_num >= 1:  # Accepter toutes les annexes valides
+                                    if self._is_higher_requirement(match, highest_requirement):
+                                        highest_requirement = match
+                                        end_page = page_num
+                        else:
+                            # Format standard : 1.1.1, 12.3.4, etc.
+                            parts = match.split('.')
+                            if len(parts) >= 2:
+                                main_num = int(parts[0])
+                                if 1 <= main_num <= 12:
+                                    # Comparaison hiérarchique pour trouver la plus haute exigence
+                                    if self._is_higher_requirement(match, highest_requirement):
+                                        highest_requirement = match
+                                        end_page = page_num
 
                 if highest_requirement:
                     print(f"Page de fin détectée: {end_page + 1} (dernière exigence: {highest_requirement})")
@@ -88,13 +99,30 @@ class PCIRequirementsExtractor:
         return 128
     
     def _is_higher_requirement(self, req1: str, req2: str) -> bool:
-        """Comparateur hiérarchique pour numérotation PCI DSS (ex: 12.3.4 > 12.3.3)"""
+        """Comparateur hiérarchique pour numérotation PCI DSS et annexes (ex: 12.3.4 > 12.3.3, A2.1.1 > A1.9.9)"""
         if not req2:
             return True
 
-        # Conversion en arrays numériques pour comparaison lexicographique
-        parts1 = [int(x) for x in req1.split('.')]
-        parts2 = [int(x) for x in req2.split('.')]
+        # Gestion des annexes vs exigences principales
+        req1_is_annexe = req1.startswith('A')
+        req2_is_annexe = req2.startswith('A')
+
+        # Les annexes viennent toujours après les exigences principales
+        if req1_is_annexe and not req2_is_annexe:
+            return True
+        if not req1_is_annexe and req2_is_annexe:
+            return False
+
+        # Extraction des parties numériques
+        if req1_is_annexe:
+            parts1 = [int(x) for x in req1[1:].split('.')]  # Supprime le 'A'
+        else:
+            parts1 = [int(x) for x in req1.split('.')]
+
+        if req2_is_annexe:
+            parts2 = [int(x) for x in req2[1:].split('.')]  # Supprime le 'A'
+        else:
+            parts2 = [int(x) for x in req2.split('.')]
 
         # Normalisation des longueurs avec padding de zéros
         max_len = max(len(parts1), len(parts2))
@@ -158,19 +186,27 @@ class PCIRequirementsExtractor:
         return "\n".join(lines)
 
     def is_requirement_number(self, line: str) -> str:
-        """Validateur de numérotation hiérarchique PCI DSS avec validation de plage"""
-        # Pattern regex pour structure hiérarchique (ex: 1.2.3.4)
-        pattern = r'^(\d+\.\d+(?:\.\d+)*(?:\.\d+)*)\s+'
+        """Validateur de numérotation hiérarchique PCI DSS et annexes avec validation de plage"""
+        # Pattern regex pour structure hiérarchique standard et annexes (ex: 1.2.3.4, A1.1.1, A2.1.1, A1.1, A2.1)
+        pattern = r'^((?:A\d+\.)?\d+(?:\.\d+)*)\s+'
         match = re.match(pattern, line.strip())
         if match:
             req_num = match.group(1)
 
-            # Validation de conformité PCI DSS : plage 1-12 pour exigences principales
-            parts = req_num.split('.')
-            if len(parts) >= 2:
-                main_num = int(parts[0])
-                if 1 <= main_num <= 12:  # Scope PCI DSS officiel
-                    return req_num
+            # Validation des annexes (format A1.1.1, A2.1.1, A1.1, A2.1, etc.)
+            if req_num.startswith('A'):
+                annexe_parts = req_num[1:].split('.')
+                if len(annexe_parts) >= 1:  # Au minimum A1.1 (2 parties après suppression du A)
+                    annexe_num = int(annexe_parts[0])
+                    if annexe_num >= 1:  # Accepter toutes les annexes valides
+                        return req_num
+            else:
+                # Validation de conformité PCI DSS : plage 1-12 pour exigences principales
+                parts = req_num.split('.')
+                if len(parts) >= 2:
+                    main_num = int(parts[0])
+                    if 1 <= main_num <= 12:  # Scope PCI DSS officiel
+                        return req_num
         return ""
 
     def is_test_line(self, line: str) -> bool:
@@ -623,9 +659,18 @@ class PCIRequirementsExtractor:
 
         Export structuré avec tri hiérarchique des exigences
         """
-        # Fonction de tri hiérarchique par numérotation d'exigence
+        # Fonction de tri hiérarchique par numérotation d'exigence et annexes
         def sort_key(req):
-            parts = [int(x) for x in req['req_num'].split('.')]  # Découpage numérique
+            req_num = req['req_num']
+            if req_num.startswith('A'):
+                # Annexes : priorité après les exigences principales
+                annexe_parts = [int(x) for x in req_num[1:].split('.')]
+                # Préfixe 99 pour que les annexes viennent après les exigences 1-12
+                parts = [99] + annexe_parts
+            else:
+                # Exigences principales
+                parts = [int(x) for x in req_num.split('.')]
+
             # Padding avec zéros pour tri cohérent (ex: 1.1 vs 1.10)
             while len(parts) < 4:
                 parts.append(0)  # Complétion avec zéros
@@ -642,9 +687,18 @@ class PCIRequirementsExtractor:
         """Sauvegarde les exigences au format CSV avec structure simplifiée"""
         import csv
         
-        # Trier par numéro d'exigence
+        # Trier par numéro d'exigence et annexes
         def sort_key(req):
-            parts = [int(x) for x in req['req_num'].split('.')]
+            req_num = req['req_num']
+            if req_num.startswith('A'):
+                # Annexes : priorité après les exigences principales
+                annexe_parts = [int(x) for x in req_num[1:].split('.')]
+                # Préfixe 99 pour que les annexes viennent après les exigences 1-12
+                parts = [99] + annexe_parts
+            else:
+                # Exigences principales
+                parts = [int(x) for x in req_num.split('.')]
+
             while len(parts) < 4:
                 parts.append(0)
             return parts
