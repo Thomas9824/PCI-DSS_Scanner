@@ -130,8 +130,8 @@ class SimpleCSVBDDComparer:
                 results['matching_reqid_only'] += 1
                 results['text_differences'].append({
                     'req_id': req_id,
-                    'csv_text': csv_text[:100] + '...' if len(csv_text) > 100 else csv_text,
-                    'db_text': db_text[:100] + '...' if len(db_text) > 100 else db_text
+                    'csv_text': csv_text,
+                    'db_text': db_text
                 })
         
         return results
@@ -156,28 +156,20 @@ class SimpleCSVBDDComparer:
         
         if results['csv_only']:
             print("REQUIREMENTS UNIQUEMENT DANS CSV:")
-            for req_id in results['csv_only'][:10]:
+            for req_id in results['csv_only']:
                 print(f"  - {req_id}")
-            if len(results['csv_only']) > 10:
-                print(f"  ... et {len(results['csv_only']) - 10} autres")
             print()
         
         if results['db_only']:
             print("REQUIREMENTS UNIQUEMENT DANS BDD:")
-            for req_id in results['db_only'][:10]:
+            for req_id in results['db_only']:
                 print(f"  - {req_id}")
-            if len(results['db_only']) > 10:
-                print(f"  ... et {len(results['db_only']) - 10} autres")
             print()
         
         if results['text_differences']:
-            print("DIFFÉRENCES DE TEXTE (même req_id):")
-            for diff in results['text_differences'][:5]:
-                print(f"\n  Requirement: {diff['req_id']}")
-                print(f"    CSV: {diff['csv_text']}")
-                print(f"    BDD: {diff['db_text']}")
-            if len(results['text_differences']) > 5:
-                print(f"\n  ... et {len(results['text_differences']) - 5} autres différences")
+            print("REQUIREMENTS AVEC TEXTE DIFFÉRENT:")
+            for diff in results['text_differences']:
+                print(f"  - {diff['req_id']}")
     
     def run_comparison(self):
         """Lance la comparaison simple."""
